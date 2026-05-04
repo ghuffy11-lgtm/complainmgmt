@@ -1,0 +1,438 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import {
+  ComplaintEntity,
+  ComplaintPriority,
+  ComplaintStatus,
+} from './entities/complaint.entity';
+import { ComplaintFieldValueEntity } from './entities/complaint-field-value.entity';
+import { DynamicFieldsService } from '../dynamic-fields/dynamic-fields.service';
+import { CoercedValue, validateValues } from '../dynamic-fields/validate-values';
+import { DynamicFieldEntity } from '../dynamic-fields/entities/dynamic-field.entity';
+import { AuthUser } from '../auth/auth-user.type';
+import { AuditService } from '../audit/audit.service';
+import { LockingService } from './locking.service';
+import { ReferenceNumberService } from './reference-number.service';
+import { AssignmentsService } from '../assignments/assignments.service';
+import { hasPermission } from '../permissions/permission-resolver';
+import { CreateComplaintDto, UpdateComplaintDto } from './dto/complaint.dto';
+
+type ListFilters = {
+  page: number;
+  pageSize: number;
+  status?: ComplaintStatus;
+  priority?: ComplaintPriority;
+  assignedTo?: string;
+  departmentId?: string;
+  q?: string;
+};
+
+@Injectable()
+export class ComplaintsService {
+  constructor(
+    @InjectRepository(ComplaintEntity) private readonly complaints: Repository<ComplaintEntity>,
+    @InjectRepository(ComplaintFieldValueEntity) private readonly fieldValues: Repository<ComplaintFieldValueEntity>,
+    private readonly dataSource: DataSource,
+    private readonly fields: DynamicFieldsService,
+    private readonly audit: AuditService,
+    private readonly locking: LockingService,
+    private readonly refs: ReferenceNumberService,
+    private readonly assignments: AssignmentsService,
+  ) {}
+
+  async list(filters: ListFilters) {
+    const qb = this.complaints.createQueryBuilder('c').orderBy('c.created_at', 'DESC');
+    if (filters.status) qb.andWhere('c.status = :status', { status: filters.status });
+    if (filters.priority) qb.andWhere('c.priority = :priority', { priority: filters.priority });
+    if (filters.assignedTo) qb.andWhere('c.assigned_to = :assignedTo', { assignedTo: filters.assignedTo });
+    if (filters.departmentId) qb.andWhere('c.assigned_department_id = :dept', { dept: filters.departmentId });
+    if (filters.q) qb.andWhere('c.reference_no ILIKE :q', { q: `%${filters.q}%` });
+    qb.skip((filters.page - 1) * filters.pageSize).take(filters.pageSize);
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total };
+  }
+
+  async findById(id: string): Promise<ComplaintEntity> {
+    const c = await this.complaints.findOne({ where: { id } });
+    if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+    return c;
+  }
+
+  async detail(id: string, actor: AuthUser) {
+    const complaint = await this.findById(id);
+    const visibleSchema = await this.fields.listForUser(actor);
+    const allValues = await this.fieldValues.find({ where: { complaintId: id } });
+    return this.toDto(complaint, allValues, visibleSchema);
+  }
+
+  // ─── create ────────────────────────────────────────────────────────────
+  async create(dto: CreateComplaintDto, actor: AuthUser) {
+    const fieldByKey = await this.fields.fullSchemaMap();
+    const schemaArr = [...fieldByKey.values()];
+    const validation = validateValues(dto.values, schemaArr);
+    if (!validation.ok) {
+      throw new BadRequestException({ code: 'VALIDATION_FAILED', errors: validation.errors });
+    }
+
+    return this.dataSource.transaction(async (em) => {
+      const referenceNo = await this.refs.next(em);
+      const complaint = await em.getRepository(ComplaintEntity).save(
+        em.getRepository(ComplaintEntity).create({
+          referenceNo,
+          status: 'open',
+          priority: dto.priority ?? 'normal',
+          createdBy: String(actor.id),
+        }),
+      );
+
+      // Persist each provided value.
+      for (const [key, coerced] of Object.entries(validation.coerced)) {
+        if (coerced.kind === 'unset') continue;
+        const field = fieldByKey.get(key)!;
+        // No locking concerns on the create path: no prior value exists. The
+        // first writer (this actor) takes ownership when the field is locked.
+        await this.persistValue(em, complaint.id, field, coerced, actor, /* takesOwnership */ true);
+      }
+
+      await this.audit.recordChange({
+        em,
+        complaintId: complaint.id,
+        fieldKey: null,
+        action: 'create',
+        oldValue: null,
+        newValue: { referenceNo, priority: complaint.priority, valueKeys: Object.keys(validation.coerced) },
+        actorId: String(actor.id),
+      });
+
+      // Optional initial assignment.
+      if (dto.departmentId || dto.assignedTo) {
+        if (!hasPermission(actor.permissions, 'complaint:assign')) {
+          throw new ForbiddenException({ code: 'RBAC_DENIED', missing: ['complaint:assign'] });
+        }
+        await this.assignments.apply(
+          em,
+          complaint,
+          {
+            departmentId: dto.departmentId ?? null,
+            userId: dto.assignedTo ?? null,
+            note: dto.assignmentNote,
+          },
+          actor,
+        );
+      }
+
+      const visibleSchema = filterVisible(schemaArr, actor);
+      const persisted = await em.getRepository(ComplaintFieldValueEntity).find({ where: { complaintId: complaint.id } });
+      return this.toDto(complaint, persisted, visibleSchema);
+    });
+  }
+
+  // ─── update (dynamic field values) ─────────────────────────────────────
+  async update(id: string, dto: UpdateComplaintDto, actor: AuthUser) {
+    if (!dto.values || Object.keys(dto.values).length === 0) {
+      return this.detail(id, actor);
+    }
+    const fieldByKey = await this.fields.fullSchemaMap();
+    const schemaArr = [...fieldByKey.values()];
+    const validation = validateValues(dto.values, schemaArr, { allowPartial: true });
+    if (!validation.ok) {
+      throw new BadRequestException({ code: 'VALIDATION_FAILED', errors: validation.errors });
+    }
+
+    return this.dataSource.transaction(async (em) => {
+      // Lock the parent row so concurrent edits on the same complaint serialize
+      // and the lock-status check sees the previous edit's effect.
+      const complaint = await em
+        .getRepository(ComplaintEntity)
+        .createQueryBuilder('c')
+        .setLock('pessimistic_write')
+        .where('c.id = :id', { id })
+        .getOne();
+      if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+
+      const existingByFieldId = new Map(
+        (await em.getRepository(ComplaintFieldValueEntity).find({ where: { complaintId: id } })).map((v) => [
+          v.fieldId,
+          v,
+        ]),
+      );
+
+      for (const [key, coerced] of Object.entries(validation.coerced)) {
+        const field = fieldByKey.get(key)!;
+        const existing = existingByFieldId.get(field.id) ?? null;
+
+        // A user explicitly sending a blank value for a required field is a
+        // data-integrity hazard — refuse it. (allowPartial in the validator
+        // only skips REQUIRED for *missing* keys; explicit blanks land here.)
+        if (coerced.kind === 'unset' && field.isRequired) {
+          throw new BadRequestException({
+            code: 'VALIDATION_FAILED',
+            errors: { [field.key]: ['REQUIRED'] },
+          });
+        }
+
+        // Per-field write permission.
+        const canWrite =
+          hasPermission(actor.permissions, `complaint.field:${field.key}:write`) ||
+          hasPermission(actor.permissions, 'complaint.field:*:write');
+        if (!canWrite) {
+          throw new ForbiddenException({
+            code: 'RBAC_DENIED',
+            missing: [`complaint.field:${field.key}:write`],
+          });
+        }
+
+        // Skip if the new value matches the existing one.
+        if (sameValue(existing, coerced)) continue;
+
+        // Locking decision (also throws FIELD_LOCKED).
+        const decision = this.locking.decide({
+          field,
+          existing,
+          incomingIsBlank: coerced.kind === 'unset',
+          actor,
+        });
+
+        const before = existing ? snapshot(existing, field) : null;
+
+        if (coerced.kind === 'unset') {
+          if (existing) {
+            await em.getRepository(ComplaintFieldValueEntity).delete({ id: existing.id });
+          }
+        } else {
+          await this.persistValue(
+            em,
+            id,
+            field,
+            coerced,
+            actor,
+            decision.kind === 'allow_takes_ownership',
+          );
+        }
+
+        await this.audit.recordChange({
+          em,
+          complaintId: id,
+          fieldKey: field.key,
+          action: decision.kind === 'allow_with_override' ? 'lock_override' : 'update',
+          oldValue: before,
+          newValue: coerced.kind === 'unset' ? null : payload(coerced),
+          actorId: String(actor.id),
+        });
+      }
+
+      const visibleSchema = filterVisible(schemaArr, actor);
+      const persisted = await em.getRepository(ComplaintFieldValueEntity).find({ where: { complaintId: id } });
+      return this.toDto(complaint, persisted, visibleSchema);
+    });
+  }
+
+  // ─── status / priority ─────────────────────────────────────────────────
+  async setStatus(id: string, status: ComplaintStatus, actor: AuthUser) {
+    return this.scalarChange(id, '__status__', actor, async (em, c) => {
+      const old = c.status;
+      if (old === status) return null;
+      c.status = status;
+      await em.getRepository(ComplaintEntity).save(c);
+      return { old, next: status };
+    });
+  }
+
+  async assign(
+    id: string,
+    input: { departmentId: string | null; userId?: string | null; note?: string },
+    actor: AuthUser,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const c = await em
+        .getRepository(ComplaintEntity)
+        .createQueryBuilder('c')
+        .setLock('pessimistic_write')
+        .where('c.id = :id', { id })
+        .getOne();
+      if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      await this.assignments.apply(em, c, input, actor);
+    });
+    // detail() reads via the global repo and must run AFTER the transaction
+    // commits so it sees the new state.
+    return this.detail(id, actor);
+  }
+
+  async setPriority(id: string, priority: ComplaintPriority, actor: AuthUser) {
+    return this.scalarChange(id, '__priority__', actor, async (em, c) => {
+      const old = c.priority;
+      if (old === priority) return null;
+      c.priority = priority;
+      await em.getRepository(ComplaintEntity).save(c);
+      return { old, next: priority };
+    });
+  }
+
+  private async scalarChange(
+    id: string,
+    fieldKey: '__status__' | '__priority__',
+    actor: AuthUser,
+    work: (em: EntityManager, c: ComplaintEntity) => Promise<{ old: string; next: string } | null>,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const c = await em.getRepository(ComplaintEntity).findOne({ where: { id } });
+      if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      const change = await work(em, c);
+      if (change) {
+        await this.audit.recordChange({
+          em,
+          complaintId: id,
+          fieldKey,
+          action: 'update',
+          oldValue: change.old,
+          newValue: change.next,
+          actorId: String(actor.id),
+        });
+      }
+    });
+    // detail() reads via the global repo and must run AFTER the transaction
+    // commits so it sees the new state.
+    return this.detail(id, actor);
+  }
+
+  // ─── persistence helper ───────────────────────────────────────────────
+  private async persistValue(
+    em: EntityManager,
+    complaintId: string,
+    field: DynamicFieldEntity,
+    coerced: Exclude<CoercedValue, { kind: 'unset' }>,
+    actor: AuthUser,
+    takesOwnership: boolean,
+  ): Promise<void> {
+    const repo = em.getRepository(ComplaintFieldValueEntity);
+    const existing = await repo.findOne({ where: { complaintId, fieldId: field.id } });
+    const row =
+      existing ??
+      repo.create({
+        complaintId,
+        fieldId: field.id,
+        valueText: null,
+        valueNumber: null,
+        valueDate: null,
+        valueOptionId: null,
+        ownerUserId: null,
+        lockedAt: null,
+      });
+
+    row.valueText = null;
+    row.valueNumber = null;
+    row.valueDate = null;
+    row.valueOptionId = null;
+
+    switch (coerced.kind) {
+      case 'text':
+        row.valueText = coerced.value;
+        break;
+      case 'number':
+        row.valueNumber = String(coerced.value);
+        break;
+      case 'date':
+        row.valueDate = coerced.value;
+        break;
+      case 'dropdown':
+        row.valueOptionId = coerced.optionId;
+        break;
+    }
+
+    if (field.locking === 'first_writer_wins' && takesOwnership && !row.ownerUserId) {
+      row.ownerUserId = String(actor.id);
+      row.lockedAt = new Date();
+    }
+
+    await repo.save(row);
+  }
+
+  // ─── DTO shape ────────────────────────────────────────────────────────
+  private toDto(c: ComplaintEntity, values: ComplaintFieldValueEntity[], visibleSchema: DynamicFieldEntity[]) {
+    const visibleIds = new Set(visibleSchema.map((f) => f.id));
+    const byFieldId = new Map(values.filter((v) => visibleIds.has(v.fieldId)).map((v) => [v.fieldId, v]));
+
+    const valuesOut: Record<string, unknown> = {};
+    const locks: Record<string, { ownerUserId: string; lockedAt: Date | null }> = {};
+
+    for (const f of visibleSchema) {
+      const v = byFieldId.get(f.id);
+      if (!v) continue;
+      valuesOut[f.key] = scalarFor(v, f);
+      if (v.ownerUserId) {
+        locks[f.key] = { ownerUserId: v.ownerUserId, lockedAt: v.lockedAt };
+      }
+    }
+
+    return {
+      id: c.id,
+      referenceNo: c.referenceNo,
+      status: c.status,
+      priority: c.priority,
+      createdBy: c.createdBy,
+      assignedDepartmentId: c.assignedDepartmentId,
+      assignedTo: c.assignedTo,
+      assignedBy: c.assignedBy,
+      assignedAt: c.assignedAt,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      values: valuesOut,
+      locks,
+    };
+  }
+}
+
+// ─── helpers (file-local) ───────────────────────────────────────────────
+
+function scalarFor(v: ComplaintFieldValueEntity, f: DynamicFieldEntity): unknown {
+  switch (f.type) {
+    case 'text': return v.valueText;
+    case 'number': return v.valueNumber == null ? null : Number(v.valueNumber);
+    case 'date': return v.valueDate;
+    case 'dropdown': return v.valueOptionId;
+    case 'file': return null;
+  }
+}
+
+function snapshot(v: ComplaintFieldValueEntity, f: DynamicFieldEntity): unknown {
+  return scalarFor(v, f);
+}
+
+function payload(coerced: Exclude<CoercedValue, { kind: 'unset' }>): unknown {
+  switch (coerced.kind) {
+    case 'text': return coerced.value;
+    case 'number': return coerced.value;
+    case 'date': return coerced.value;
+    case 'dropdown': return coerced.optionId;
+  }
+}
+
+function sameValue(existing: ComplaintFieldValueEntity | null, coerced: CoercedValue): boolean {
+  if (!existing) return coerced.kind === 'unset';
+  switch (coerced.kind) {
+    case 'unset':
+      return existing.valueText == null && existing.valueNumber == null && existing.valueDate == null && existing.valueOptionId == null;
+    case 'text':
+      return existing.valueText === coerced.value;
+    case 'number':
+      return existing.valueNumber != null && Number(existing.valueNumber) === coerced.value;
+    case 'date':
+      return existing.valueDate === coerced.value;
+    case 'dropdown':
+      return existing.valueOptionId === coerced.optionId;
+  }
+}
+
+function filterVisible(schema: DynamicFieldEntity[], actor: AuthUser): DynamicFieldEntity[] {
+  return schema.filter((f) => {
+    const roles = f.visibility?.roles;
+    if (!roles || roles === '*') return true;
+    return actor.roleKeys.some((rk) => roles.includes(rk));
+  });
+}

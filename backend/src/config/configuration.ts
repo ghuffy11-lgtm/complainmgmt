@@ -1,0 +1,58 @@
+import * as Joi from 'joi';
+
+export interface AppConfig {
+  nodeEnv: 'development' | 'production' | 'test';
+  port: number;
+  databaseUrl: string;
+  jwt: { secret: string; accessTtl: number; refreshTtl: number };
+  bcryptRounds: number;
+  attachments: { maxFilesPerComplaint: number; maxBytes: number };
+  corsOrigins: string[];
+  initialAdmin?: { username: string; password: string; displayName: string };
+}
+
+export const envSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+  PORT: Joi.number().integer().min(1).max(65535).default(3000),
+  DATABASE_URL: Joi.string().uri({ scheme: ['postgres', 'postgresql'] }).required(),
+  JWT_SECRET: Joi.string().min(32).required(),
+  JWT_ACCESS_TTL: Joi.number().integer().min(60).default(900),
+  JWT_REFRESH_TTL: Joi.number().integer().min(3600).default(60 * 60 * 24 * 7),
+  BCRYPT_ROUNDS: Joi.number().integer().min(8).max(15).default(12),
+  ATTACHMENT_MAX_FILES_PER_COMPLAINT: Joi.number().integer().min(1).max(10).default(3),
+  ATTACHMENT_MAX_BYTES: Joi.number().integer().min(1024).default(2 * 1024 * 1024),
+  CORS_ORIGINS: Joi.string().default(''),
+  INITIAL_ADMIN_USERNAME: Joi.string().optional(),
+  INITIAL_ADMIN_PASSWORD: Joi.string().min(10).optional(),
+  INITIAL_ADMIN_DISPLAY_NAME: Joi.string().optional(),
+}).unknown(true);
+
+export function loadConfig(): AppConfig {
+  const env = process.env;
+  const initialAdminUser = env.INITIAL_ADMIN_USERNAME;
+  const initialAdminPw = env.INITIAL_ADMIN_PASSWORD;
+  return {
+    nodeEnv: (env.NODE_ENV as AppConfig['nodeEnv']) ?? 'development',
+    port: parseInt(env.PORT ?? '3000', 10),
+    databaseUrl: env.DATABASE_URL!,
+    jwt: {
+      secret: env.JWT_SECRET!,
+      accessTtl: parseInt(env.JWT_ACCESS_TTL ?? '900', 10),
+      refreshTtl: parseInt(env.JWT_REFRESH_TTL ?? '604800', 10),
+    },
+    bcryptRounds: parseInt(env.BCRYPT_ROUNDS ?? '12', 10),
+    attachments: {
+      maxFilesPerComplaint: parseInt(env.ATTACHMENT_MAX_FILES_PER_COMPLAINT ?? '3', 10),
+      maxBytes: parseInt(env.ATTACHMENT_MAX_BYTES ?? String(2 * 1024 * 1024), 10),
+    },
+    corsOrigins: (env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    initialAdmin:
+      initialAdminUser && initialAdminPw
+        ? {
+            username: initialAdminUser,
+            password: initialAdminPw,
+            displayName: env.INITIAL_ADMIN_DISPLAY_NAME ?? 'Administrator',
+          }
+        : undefined,
+  };
+}
