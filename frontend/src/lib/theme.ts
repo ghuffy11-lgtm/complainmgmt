@@ -31,10 +31,10 @@ export const THEME_PRESETS: ThemePreset[] = [
     description: 'Default — restrained royal blue on slate.',
   },
   {
-    key: 'hadi_pharmacy',
-    label: 'Hadi Pharmacy',
+    key: 'hadi',
+    label: 'Hadi',
     primary: '#13a0d5',
-    description: "Hadi Pharmacy's brand cyan-blue.",
+    description: 'Hadi brand cyan-blue.',
   },
   {
     key: 'clinical_teal',
