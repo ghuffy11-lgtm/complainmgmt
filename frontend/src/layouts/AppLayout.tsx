@@ -177,7 +177,7 @@ export function AppLayout() {
         </button>
 
         {/* User block */}
-        <div className="p-3 border-t border-sidebar-2 bg-black/30">
+        <div className="p-3 border-t border-sidebar-2">
           <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
             <div className="w-9 h-9 rounded-full bg-primary text-white font-bold text-[13px] inline-flex items-center justify-center shrink-0">
               {initials}
