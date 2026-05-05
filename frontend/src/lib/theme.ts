@@ -93,9 +93,14 @@ export type ThemeFamily = {
 /** Derive the full theme family from a single primary hex. */
 export function deriveThemeFamily(hex: string): ThemeFamily {
   const { h, s, l } = hexToHsl(hex);
-  // Cap sidebar saturation so the dark anchor never becomes a bright,
-  // distracting wash — we want "deeply tinted slate", not "dim primary".
-  const sidebarSat = Math.min(s * 0.3, 25);
+  // Sidebar tones: visibly tinted dark colour in the same hue family as
+  // the primary, but at low lightness so white text stays legible.
+  // Tuned so the sidebar reads as "dark Hadi" / "dark Forest" / etc.
+  // rather than a generic slate that doesn't tie to the brand.
+  // Saturation capped at 55% so very-saturated primaries don't produce a
+  // shouty sidebar; lightness 22% / 28% keeps WCAG AA contrast on white
+  // text comfortably (verified for every shipped preset).
+  const sidebarSat = Math.min(s * 0.6, 55);
   return {
     primary: hex,
     // Hover: ~8% darker — visible but subtle.
@@ -107,8 +112,8 @@ export function deriveThemeFamily(hex: string): ThemeFamily {
     primaryBg: hslToHex(h, clamp(s * 0.4, 0, 100), 96),
     // Border: light tint, around L=82, mid saturation.
     primaryBorder: hslToHex(h, clamp(s * 0.6, 0, 100), 82),
-    sidebar: hslToHex(h, sidebarSat, 12),
-    sidebar2: hslToHex(h, sidebarSat, 18),
+    sidebar: hslToHex(h, sidebarSat, 22),
+    sidebar2: hslToHex(h, sidebarSat, 28),
     sidebarAccent: hex,
   };
 }
