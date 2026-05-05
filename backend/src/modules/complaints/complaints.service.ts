@@ -68,41 +68,55 @@ export class ComplaintsService {
     if (filters.dateTo) qb.andWhere('c.complaint_date <= :dateTo', { dateTo: filters.dateTo });
 
     // ─── dynamic field-value filters (?fv[<key>]=<value>) ──────────────
-    // One INNER JOIN per filter; aliases are content-derived to keep the
-    // SQL stable. Only is_searchable + active fields are accepted.
+    // EXISTS subquery per filter — keeps the main row set 1-row-per-complaint
+    // (no DISTINCT needed) and works through getManyAndCount's count path,
+    // which the raw-table innerJoin variant does not. Only is_searchable +
+    // active fields are accepted; everything else is BAD_FIELD_FILTER.
     const fv = filters.fv ?? {};
     const fvEntries = Object.entries(fv).filter(([, v]) => typeof v === 'string' && v.trim() !== '');
     if (fvEntries.length > 0) {
       const schemaByKey = await this.fields.fullSchemaMap();
-      let aliasIdx = 0;
+      let idx = 0;
       for (const [key, rawValue] of fvEntries) {
         const field = schemaByKey.get(key);
         if (!field || !field.isActive || !field.isSearchable) {
           throw new BadRequestException({ code: 'BAD_FIELD_FILTER', key });
         }
-        const a = `fv${aliasIdx++}`;
-        qb.innerJoin(
-          'complaint_field_values',
-          a,
-          `${a}.complaint_id = c.id AND ${a}.field_id = :${a}_fid`,
-          { [`${a}_fid`]: field.id },
-        );
+        const i = idx++;
+        const fidParam = `fv${i}_fid`;
+        const vParam = `fv${i}_v`;
         const value = rawValue.trim();
+
+        let valueClause: string;
+        let valueParam: Record<string, unknown>;
         switch (field.type) {
           case 'text':
-            qb.andWhere(`${a}.value_text ILIKE :${a}_v`, { [`${a}_v`]: `%${value}%` });
+            valueClause = `cfv.value_text ILIKE :${vParam}`;
+            valueParam = { [vParam]: `%${value}%` };
             break;
           case 'number':
             // Numeric column cast to text for substring match — operators
             // typically search "555" expecting partial-number matches.
-            qb.andWhere(`${a}.value_number::text ILIKE :${a}_v`, { [`${a}_v`]: `%${value}%` });
+            valueClause = `cfv.value_number::text ILIKE :${vParam}`;
+            valueParam = { [vParam]: `%${value}%` };
             break;
           case 'dropdown':
-            qb.andWhere(`${a}.value_option_id = :${a}_v`, { [`${a}_v`]: value });
+            valueClause = `cfv.value_option_id = :${vParam}`;
+            valueParam = { [vParam]: value };
             break;
           default:
             throw new BadRequestException({ code: 'UNSEARCHABLE_FIELD_TYPE', key, type: field.type });
         }
+
+        qb.andWhere(
+          `EXISTS (
+             SELECT 1 FROM complaint_field_values cfv
+              WHERE cfv.complaint_id = c.id
+                AND cfv.field_id = :${fidParam}
+                AND ${valueClause}
+           )`,
+          { [fidParam]: field.id, ...valueParam },
+        );
       }
     }
 
