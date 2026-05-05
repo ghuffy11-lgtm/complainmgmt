@@ -16,7 +16,10 @@ import {
   UpdatePriorityDto,
   UpdateStatusDto,
 } from './dto/complaint.dto';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user.type';
 import { ComplaintPriority, ComplaintStatus } from './entities/complaint.entity';
@@ -26,8 +29,9 @@ export class ComplaintsController {
   constructor(private readonly complaints: ComplaintsService) {}
 
   @Get()
-  @RequirePermissions('complaint:read')
+  @RequireAnyPermission('complaint:read', 'complaint.own:read')
   async list(
+    @CurrentUser() actor: AuthUser,
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '25',
     @Query('status') status?: ComplaintStatus,
@@ -46,17 +50,20 @@ export class ComplaintsController {
     const p = Math.max(1, parseInt(page, 10) || 1);
     const ps = Math.min(200, Math.max(1, parseInt(pageSize, 10) || 25));
     const fv = sanitiseFv(fvRaw);
-    const r = await this.complaints.list({
-      page: p, pageSize: ps,
-      status, priority, assignedTo, departmentId, q,
-      dateFrom, dateTo,
-      fv,
-    });
+    const r = await this.complaints.list(
+      {
+        page: p, pageSize: ps,
+        status, priority, assignedTo, departmentId, q,
+        dateFrom, dateTo,
+        fv,
+      },
+      actor,
+    );
     return { data: r.data, meta: { page: p, pageSize: ps, total: r.total } };
   }
 
   @Get(':id')
-  @RequirePermissions('complaint:read')
+  @RequireAnyPermission('complaint:read', 'complaint.own:read')
   detail(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
     return this.complaints.detail(id, actor);
   }

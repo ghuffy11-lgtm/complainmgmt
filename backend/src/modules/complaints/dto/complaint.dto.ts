@@ -21,7 +21,9 @@ export class CreateComplaintDto {
 
   @IsOptional() @IsIn(PRIORITIES) priority?: ComplaintPriority;
 
-  @IsOptional() @IsString() departmentId?: string;
+  /** Department is mandatory at create — every complaint is born routed.
+   *  Reassignment later requires `complaint:assign`. */
+  @IsString() departmentId!: string;
   @IsOptional() @IsString() assignedTo?: string;
   @IsOptional() @IsString() @MaxLength(500) assignmentNote?: string;
 

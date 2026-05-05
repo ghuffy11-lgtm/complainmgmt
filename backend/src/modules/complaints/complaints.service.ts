@@ -57,8 +57,50 @@ export class ComplaintsService {
     private readonly assignments: AssignmentsService,
   ) {}
 
-  async list(filters: ListFilters) {
+  // ─── visibility scope ──────────────────────────────────────────────────
+  // `complaint:read` (admin / manager) sees everything. Otherwise the
+  // caller must hold `complaint.own:read`, which narrows visibility to
+  // complaints assigned to one of their active departments OR complaints
+  // they created themselves (decision: creator-always-sees).
+
+  private hasFullRead(actor: AuthUser): boolean {
+    return actor.permissions.has('complaint:read');
+  }
+
+  private applyVisibilityScope(
+    qb: ReturnType<Repository<ComplaintEntity>['createQueryBuilder']>,
+    actor: AuthUser,
+  ): void {
+    if (this.hasFullRead(actor)) return;
+    const deptIds = actor.departmentIds ?? [];
+    if (deptIds.length > 0) {
+      qb.andWhere(
+        '(c.assigned_department_id IN (:...scopeDepts) OR c.created_by = :scopeMe)',
+        { scopeDepts: deptIds, scopeMe: String(actor.id) },
+      );
+    } else {
+      // Scoped user with zero memberships → only their own creations.
+      qb.andWhere('c.created_by = :scopeMe', { scopeMe: String(actor.id) });
+    }
+  }
+
+  /** Detail-page guard: 404 (not 403) for cross-dept reads to avoid leaking
+   *  existence of complaints in other departments. */
+  private assertVisible(complaint: ComplaintEntity, actor: AuthUser): void {
+    if (this.hasFullRead(actor)) return;
+    const deptIds = actor.departmentIds ?? [];
+    const inDept =
+      complaint.assignedDepartmentId != null &&
+      deptIds.includes(String(complaint.assignedDepartmentId));
+    const isCreator = String(complaint.createdBy) === String(actor.id);
+    if (!inDept && !isCreator) {
+      throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+    }
+  }
+
+  async list(filters: ListFilters, actor: AuthUser) {
     const qb = this.complaints.createQueryBuilder('c').orderBy('c.created_at', 'DESC');
+    this.applyVisibilityScope(qb, actor);
     if (filters.status) qb.andWhere('c.status = :status', { status: filters.status });
     if (filters.priority) qb.andWhere('c.priority = :priority', { priority: filters.priority });
     if (filters.assignedTo) qb.andWhere('c.assigned_to = :assignedTo', { assignedTo: filters.assignedTo });
@@ -133,6 +175,7 @@ export class ComplaintsService {
 
   async detail(id: string, actor: AuthUser) {
     const complaint = await this.findById(id);
+    this.assertVisible(complaint, actor);
     const visibleSchema = await this.fields.listForUser(actor);
     const allValues = await this.fieldValues.find({ where: { complaintId: id } });
     return this.toDto(complaint, allValues, visibleSchema);
@@ -235,6 +278,10 @@ export class ComplaintsService {
         .where('c.id = :id', { id })
         .getOne();
       if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+
+      // Visibility scope — same rule as detail. A user without `complaint:read`
+      // can only edit complaints they can see (their depts or their creations).
+      this.assertVisible(complaint, actor);
 
       // Closed/resolved complaints are read-only — even for users who can
       // reopen them. The reopen permission is a status-transition gate, not
@@ -375,6 +422,7 @@ export class ComplaintsService {
         .where('c.id = :id', { id })
         .getOne();
       if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      this.assertVisible(c, actor);
       assertEditable(c, actor);
       await this.assignments.apply(em, c, input, actor);
     });
@@ -413,6 +461,7 @@ export class ComplaintsService {
         .where('c.id = :id', { id })
         .getOne();
       if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      this.assertVisible(c, actor);
       const change = await work(em, c);
       if (change) {
         await this.audit.recordChange({

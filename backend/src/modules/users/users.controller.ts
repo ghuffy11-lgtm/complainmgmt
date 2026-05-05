@@ -11,8 +11,17 @@ export class UsersController {
 
   @Get()
   @RequirePermissions('admin.users:read')
-  async list(@Query('page') page = '1', @Query('pageSize') pageSize = '25') {
-    const [data, total] = await this.users.list(parseInt(page, 10), parseInt(pageSize, 10));
+  async list(
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '25',
+    @Query('departmentId') departmentId?: string,
+    @Query('isActive') isActive?: string,
+  ) {
+    const [data, total] = await this.users.list(parseInt(page, 10), parseInt(pageSize, 10), {
+      departmentId,
+      isActive:
+        isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+    });
     const memberships = await this.users.listMembershipsByUser(data.map((u) => String(u.id)));
     return {
       data: data.map((u) => this.toDto(u, memberships.get(String(u.id)) ?? [])),

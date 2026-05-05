@@ -3,6 +3,7 @@ import { EntityManager } from 'typeorm';
 import { ComplaintEntity } from '../complaints/entities/complaint.entity';
 import { DepartmentEntity } from '../departments/entities/department.entity';
 import { UserEntity } from '../auth/entities/user.entity';
+import { UserDepartmentEntity } from '../auth/entities/user-department.entity';
 import { AssignmentHistoryEntity } from './entities/assignment-history.entity';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../auth/auth-user.type';
@@ -48,6 +49,21 @@ export class AssignmentsService {
     if (newUser) {
       const u = await em.getRepository(UserEntity).findOne({ where: { id: newUser } });
       if (!u || !u.isActive) throw new BadRequestException({ code: 'INVALID_USER' });
+      // Cross-validate: user must be an active member of the target department.
+      // Without this an assigner could pick someone who can't actually see the
+      // complaint (their `complaint.own:read` doesn't cover it).
+      if (newDept) {
+        const member = await em.getRepository(UserDepartmentEntity).findOne({
+          where: { userId: newUser, departmentId: newDept, isActive: true },
+        });
+        if (!member) {
+          throw new BadRequestException({
+            code: 'USER_NOT_IN_DEPARTMENT',
+            userId: newUser,
+            departmentId: newDept,
+          });
+        }
+      }
     }
 
     complaint.assignedDepartmentId = newDept;

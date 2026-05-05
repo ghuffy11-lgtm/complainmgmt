@@ -78,11 +78,17 @@ N="$(echo "$SCHEMA" | python3 -c "import json,sys; print(len(json.load(sys.stdin
 
 # ─── 5. complaint lifecycle ───────────────────────────────────────────────
 step "complaint lifecycle (create → status → priority → audit)"
+# Department is mandatory at create time (multi-dept access control). Pick the
+# first active one — any will do for smoke purposes.
+DEPTS="$("${CURL[@]}" "${H[@]}" "$BASE/api/departments")"
+DEPT_ID="$(echo "$DEPTS" | python3 -c "import json,sys;ds=[d for d in json.load(sys.stdin) if d.get('isActive')];print(ds[0]['id'] if ds else '')")"
+[[ -n "$DEPT_ID" ]] || { nope "no active department available for smoke"; exit 1; }
+
 # Auto-fill any required fields the admin has added via the field editor (e.g.
 # mobile_number with `{"digits":8}`). Without this, every newly required field
 # would break the smoke. The schema we already pulled in step 4 is reused.
-CREATE_BODY="$(echo "$SCHEMA" | python3 -c '
-import json, sys
+CREATE_BODY="$(echo "$SCHEMA" | DEPT_ID="$DEPT_ID" python3 -c '
+import json, os, sys
 schema = json.load(sys.stdin)
 values = {"patient_complaint": "smoke test " + str(__import__("random").randint(1, 1_000_000))}
 for f in schema:
@@ -119,7 +125,11 @@ for f in schema:
         if opts:
             values[key] = opts[0]["id"]
     # file: cannot synthesise — leave blank, expect smoke to flag if required
-print(json.dumps({"values": values, "priority": "normal"}))
+print(json.dumps({
+  "values": values,
+  "priority": "normal",
+  "departmentId": os.environ["DEPT_ID"],
+}))
 ')"
 C="$("${CURL[@]}" -X POST "$BASE/api/complaints" "${H[@]}" \
   -H 'Content-Type: application/json' \
@@ -157,9 +167,12 @@ rm -f "$PNG"
 step "field locking (FIELD_LOCKED for non-owner without override)"
 EMP_USER="smoketest_$(date +%s)"
 EMP_PASS="smoke-test-pass-1234"
+# Create the smoke employee already a member of the same department the
+# complaint is assigned to — otherwise complaint.own:read would 404 the
+# request before field-locking ever runs.
 EMP="$("${CURL[@]}" -X POST "$BASE/api/users" "${H[@]}" \
   -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$EMP_USER\",\"displayName\":\"Smoke\",\"password\":\"$EMP_PASS\"}")"
+  -d "{\"username\":\"$EMP_USER\",\"displayName\":\"Smoke\",\"password\":\"$EMP_PASS\",\"departmentIds\":[\"$DEPT_ID\"],\"departmentId\":\"$DEPT_ID\"}")"
 EID="$(echo "$EMP" | JSON_GET '.id')"
 ROLES="$("${CURL[@]}" "${H[@]}" "$BASE/api/roles")"
 EMP_ROLE="$(echo "$ROLES" | python3 -c "import json,sys; print([r['id'] for r in json.load(sys.stdin) if r['key']=='employee'][0])")"

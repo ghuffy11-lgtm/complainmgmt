@@ -34,12 +34,26 @@ export class UsersService {
     this.bcryptRounds = cfg.get<AppConfig>('app')!.bcryptRounds;
   }
 
-  list(page = 1, pageSize = 25) {
-    return this.users.findAndCount({
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    });
+  async list(
+    page = 1,
+    pageSize = 25,
+    filters: { departmentId?: string; isActive?: boolean } = {},
+  ): Promise<[UserEntity[], number]> {
+    const qb = this.users.createQueryBuilder('u').orderBy('u.created_at', 'DESC');
+    if (filters.isActive !== undefined) {
+      qb.andWhere('u.is_active = :isActive', { isActive: filters.isActive });
+    }
+    // Filter to active members of a target department — used by the
+    // assignment dialog's cascade picker so callers can only pick assignees
+    // who actually belong to the chosen department.
+    if (filters.departmentId) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM user_departments ud WHERE ud.user_id = u.id AND ud.department_id = :dept AND ud.is_active = TRUE)',
+        { dept: filters.departmentId },
+      );
+    }
+    qb.skip((page - 1) * pageSize).take(pageSize);
+    return qb.getManyAndCount();
   }
 
   /** Batch-load active department memberships for a set of users.
