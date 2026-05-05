@@ -15,6 +15,8 @@ The migrations under `db/migrations/*.sql` are the source of truth; this documen
 
 ```
 users ──< user_roles >── roles ──< role_permissions >── permissions
+  │
+  └──< user_departments >── departments
 
 complaints ──< complaint_field_values >── dynamic_fields
      │
@@ -22,7 +24,10 @@ complaints ──< complaint_field_values >── dynamic_fields
      ├──< complaint_assignment_history
      └──< complaint_audit_log
 
-departments ──< complaints (assigned_department_id)
+departments ──< complaints (assigned_department_id, NOT NULL at create-time)
+
+branding_assets (single-row store: kind='logo')
+system_settings (key/value, including branding.* keys)
 ```
 
 ## Auth & RBAC
@@ -38,10 +43,27 @@ departments ──< complaints (assigned_department_id)
 | password_hash | TEXT NOT NULL | bcrypt (`$2b$…`) — empty string forbidden |
 | auth_provider | TEXT NOT NULL DEFAULT 'local' | `local` \| `ldap` (future) |
 | is_active | BOOLEAN NOT NULL DEFAULT TRUE | |
+| **department_id** | BIGINT FK departments.id | **Primary** ("home") department. Defaults form pickers + dashboard scope label. Constrained by trigger `users_primary_dept_must_be_member` to be one of the user's active memberships. Nullable for admins/managers who span departments. |
 | last_login_at | TIMESTAMPTZ | |
 | failed_login_count | INTEGER NOT NULL DEFAULT 0 | for lockout |
 | locked_until | TIMESTAMPTZ | |
 | created_at, updated_at | TIMESTAMPTZ | |
+
+### `user_departments`  *(migration 0017)*
+
+The user-to-department join table. Lets a user belong to N departments — supervisors covering multiple wards, employees floating between roles.
+
+| Column | Type | Notes |
+|---|---|---|
+| user_id | BIGINT FK users.id ON DELETE CASCADE | |
+| department_id | BIGINT FK departments.id | |
+| is_active | BOOLEAN NOT NULL DEFAULT TRUE | revoke without deleting (preserves audit references) |
+| created_at, updated_at | TIMESTAMPTZ | |
+| | PRIMARY KEY (user_id, department_id) | |
+
+Indexes: partial on `(user_id) WHERE is_active`, partial on `(department_id) WHERE is_active`.
+
+A trigger refuses to set `users.department_id` to a department the user isn't an active member of — keeps the "primary" invariant honest from any code path.
 
 ### `roles`
 
@@ -59,10 +81,16 @@ departments ──< complaints (assigned_department_id)
 | Column | Type | Notes |
 |---|---|---|
 | id | BIGSERIAL PK | |
-| resource | TEXT NOT NULL | e.g. `complaint`, `complaint.field:investigation`, `admin.users` |
-| action | TEXT NOT NULL | `read` \| `create` \| `update` \| `delete` \| `assign` \| `override` \| `manage` |
+| resource | TEXT NOT NULL | e.g. `complaint`, `complaint.own`, `complaint.field:investigation`, `admin.users` |
+| action | TEXT NOT NULL | `read` \| `create` \| `update` \| `delete` \| `assign` \| `override` \| `manage` \| `reopen` |
 | description | TEXT | |
 | | UNIQUE (resource, action) | |
+
+Notable resources:
+- `complaint:read` — see all complaints (admin / manager).
+- `complaint.own:read` — see only complaints in the caller's active department memberships **OR** complaints they created (creator-always-sees). Granted to supervisor + employee.
+- `complaint.field:<key>:read|write|override` — per-field permissions provisioned automatically when a field is created. `:*` wildcards supported.
+- `admin.settings:manage` — gates the branding admin endpoints too.
 
 ### `user_roles`
 
@@ -124,12 +152,28 @@ Defines complaint fields at runtime.
 | type | TEXT NOT NULL | `text` \| `number` \| `date` \| `dropdown` \| `file` |
 | is_required | BOOLEAN NOT NULL DEFAULT FALSE | |
 | is_active | BOOLEAN NOT NULL DEFAULT TRUE | |
+| **is_searchable** | BOOLEAN NOT NULL DEFAULT FALSE | When true, the complaints list auto-renders a per-field filter input (`?fv[<key>]=…`). Only meaningful for `text` / `number` / `dropdown`; `date` and `file` ignore this flag. |
 | sort_order | INTEGER NOT NULL DEFAULT 0 | |
-| validation | JSONB NOT NULL DEFAULT '{}' | `{ min, max, regex, maxLength, ... }` |
+| validation | JSONB NOT NULL DEFAULT '{}' | See "Validation block" below |
 | visibility | JSONB NOT NULL DEFAULT '{"roles":"*"}' | `{"roles":["employee","supervisor"]}` or `*` |
 | locking | TEXT NOT NULL DEFAULT 'none' | `none` \| `first_writer_wins` |
 | is_system | BOOLEAN NOT NULL DEFAULT FALSE | system fields cannot be deleted, only deactivated |
 | created_at, updated_at | TIMESTAMPTZ | |
+
+#### Validation block
+
+Stored as JSONB. Type-specific keys:
+
+| Type | Keys | Effect |
+|---|---|---|
+| `text` | `maxLength`, `regex` | length cap; arbitrary regex (compile-time validated) |
+| `number` | `min`, `max` | numeric value bounds |
+| `number` | `digits` | exact digit count, e.g. `{"digits": 8}` for an 8-digit phone |
+| `number` | `minDigits`, `maxDigits` | digit-count range, e.g. `{"minDigits":9, "maxDigits":10}` |
+| `date` | `min`, `max` | YYYY-MM-DD bounds |
+| `dropdown` | — | constraints come from the option list |
+
+Mixing is allowed (`{"digits":8, "min":1}`). Validation runs server-side in `validateValues()`; the client mirrors the same checks for UX.
 
 ### `dynamic_field_options`
 
@@ -155,9 +199,9 @@ Dropdown values for `type='dropdown'`.
 | reference_no | TEXT UNIQUE NOT NULL | e.g. `CMP-2026-000123` |
 | status | TEXT NOT NULL DEFAULT 'open' | `open` \| `in_progress` \| `resolved` \| `closed` \| `rejected` |
 | priority | TEXT NOT NULL DEFAULT 'normal' | `low` \| `normal` \| `high` \| `critical` |
-| created_by | BIGINT FK users.id | |
-| assigned_department_id | BIGINT FK departments.id | nullable until assigned |
-| assigned_to | BIGINT FK users.id | nullable |
+| created_by | BIGINT FK users.id | used by the `complaint.own:read` creator-OR rule |
+| assigned_department_id | BIGINT FK departments.id | Nullable in the column, but **mandatory** at the API on create — every complaint enters the system already routed. |
+| assigned_to | BIGINT FK users.id | nullable. Validated to be an active member of `assigned_department_id` at write time (`USER_NOT_IN_DEPARTMENT`). |
 | assigned_by | BIGINT FK users.id | nullable |
 | assigned_at | TIMESTAMPTZ | |
 | complaint_date | DATE | nullable. Operator-supplied event date — distinct from `created_at` (insertion timestamp). |
@@ -185,6 +229,8 @@ The dynamic payload — one row per (complaint, field).
 
 Exactly one of `value_text/number/date/option_id` is non-null, enforced by a CHECK constraint that matches the field's `type`.
 
+The `?fv[<key>]=<value>` filter on the list endpoint runs an `EXISTS` subquery against this table per filter — `value_number::text ILIKE '%…%'` for numeric fields, `value_text ILIKE` for text, exact match on `value_option_id` for dropdowns. Only fields with `is_searchable=true` are accepted.
+
 ## Attachments
 
 ### `complaint_attachments`
@@ -201,7 +247,7 @@ Exactly one of `value_text/number/date/option_id` is non-null, enforced by a CHE
 | uploaded_by | BIGINT FK users.id NOT NULL | |
 | uploaded_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | |
 
-A trigger enforces ≤ 3 attachments per `complaint_id`.
+A trigger enforces ≤ 3 attachments per `complaint_id`. Allowed MIME set is image/png, image/jpeg, application/pdf (sniffed, not trusted from the request header).
 
 ## Audit
 
@@ -213,15 +259,15 @@ Append-only.
 |---|---|---|
 | id | BIGSERIAL PK | |
 | complaint_id | BIGINT FK complaints.id ON DELETE CASCADE | |
-| field_key | TEXT | NULL for status/assignment changes; uses synthetic keys like `__status__`, `__assignment__` |
-| action | TEXT NOT NULL | `create` \| `update` \| `delete` \| `assign` \| `lock_override` |
+| field_key | TEXT | NULL for whole-complaint actions (`create`); synthetic `__status__`, `__priority__`, `__assignment__`, `__attachment__`, `__complaint_date__`, `__settings__` for non-field changes; the field's `key` for dynamic field updates. |
+| action | TEXT NOT NULL | `create` \| `update` \| `delete` \| `assign` \| `lock_override` \| `reopen` \| `attachment.added` \| `attachment.removed` \| `password_reset_by_admin` \| `role_permissions_changed` \| `settings_changed` |
 | old_value | JSONB | |
 | new_value | JSONB | |
 | actor_id | BIGINT FK users.id | |
 | occurred_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | |
-| note | TEXT | optional context |
+| note | TEXT | optional context (operators can add a note when reopening, etc.) |
 
-`REVOKE UPDATE, DELETE ON complaint_audit_log FROM <app role>` — application code uses an INSERT-only role for this table to make tampering harder.
+`REVOKE UPDATE, DELETE ON complaint_audit_log FROM <app role>` — application code uses an INSERT-only role for this table to make tampering harder. BEFORE-UPDATE/DELETE triggers also raise to backstop.
 
 ## Assignment history
 
@@ -243,7 +289,7 @@ Append-only.
 
 ### `system_settings`
 
-Singleton key/value store for tunables admins may want to edit at runtime (timezone, complaint reference format, attachment caps if loosened).
+Singleton key/value store for tunables admins may want to edit at runtime.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -252,13 +298,60 @@ Singleton key/value store for tunables admins may want to edit at runtime (timez
 | updated_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | |
 | updated_by | BIGINT FK users.id | |
 
+Notable seeded keys:
+
+| Key | Purpose |
+|---|---|
+| `branding.organization_name` | Header strip + footer organisation label |
+| `branding.system_name` | Browser tab title, sidebar subtitle, login heading |
+| `branding.system_short_name` | Sidebar mark + footer shortcode |
+| `branding.login_subtitle` | Subtitle on the login card |
+| `branding.login_tagline` | Prompt line above the login form |
+| `branding.footer_text` | Right-of-org-name footer text |
+
+The Branding admin UI (Admin → Settings) writes these via `POST /api/admin/branding`, which goes through the same row-level audit as the raw settings editor.
+
+## Branding assets
+
+### `branding_assets`  *(migration 0019)*
+
+Single-row-per-kind store for branding binary assets — bytes live here so jsonb settings stay lean.
+
+| Column | Type | Notes |
+|---|---|---|
+| kind | TEXT PK | `'logo'` is the only kind today; room for `'favicon'` etc. |
+| mime | TEXT NOT NULL | `image/png` \| `image/jpeg` \| `image/webp` \| `image/svg+xml` |
+| bytes | BYTEA NOT NULL | the image |
+| size_bytes | INTEGER NOT NULL | capped at 524288 (512 KB) at the API |
+| updated_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | served as `Last-Modified` + used as cache-busting `?v=…` token on the public URL |
+| updated_by | BIGINT FK users.id | |
+
+The public `GET /api/branding/logo` streams this row's bytes; `GET /api/branding` returns a URL that includes `?v=<updated_at_ms>` so cached copies invalidate when an admin replaces the logo.
+
+## Migration index
+
+A flat list of all migrations under `db/migrations/`:
+
+| # | File | What it does |
+|---|---|---|
+| 0001–0013 | foundation, RBAC, complaints, fields, attachments, audit | initial system bring-up |
+| 0014 | `users_department.sql` | adds `users.department_id` (single primary) + `dashboard.own:read` permission |
+| 0015 | `searchable_fields.sql` | adds `dynamic_fields.is_searchable` + seeds `mobile_number` (8-digit) and `file_id` (10-digit) |
+| 0016 | `retire_legacy_mobile_fileid.sql` | deactivates the pre-0015 admin-created `mobile`/`fileid` fields |
+| 0017 | `user_departments_multi.sql` | introduces `user_departments` join + the primary-membership trigger |
+| 0018 | `complaint_own_read.sql` | provisions `complaint.own:read`, swaps it in for supervisor + employee in place of broad `complaint:read` |
+| 0019 | `branding.sql` | `branding_assets` table + seeded `branding.*` settings |
+
 ## Seed data
 
-Seed migration provisions:
+The seed migration provisions:
 
 - Roles: `admin`, `manager`, `supervisor`, `employee` (all `is_system = true` so they can't be deleted, but their permissions are editable).
 - Permissions: full grid of `resource × action` for everything in scope.
 - Role/permission mapping per the matrix in `docs/03-api-design.md` and `skills/rbac.skill.md`.
 - An initial admin user **only** when `INITIAL_ADMIN_USERNAME` and `INITIAL_ADMIN_PASSWORD` are present in env (so production deploys can supply secrets).
-- Dynamic fields: `patient_complaint`, `complaint_investigation`, `action_taken`, `pro` (all `text`, all `locking='first_writer_wins'`, all `is_system=true`).
+- Dynamic fields:
+  - System text fields (`patient_complaint`, `complaint_investigation`, `action_taken`, `pro`) — all `locking='first_writer_wins'`, `is_system=true`.
+  - Searchable number fields (`mobile_number`, `file_id`) seeded by 0015 with `digits` validators and per-field permissions wired into the role grid.
 - Departments: empty by default; admin populates per deployment.
+- Branding settings: seeded with the previously hardcoded copy so a fresh deploy looks the same as the pre-0019 build until an admin edits them.

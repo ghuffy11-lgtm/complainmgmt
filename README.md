@@ -64,12 +64,15 @@ The current `main` includes work from the post-handover phase:
 | File | Purpose |
 | --- | --- |
 | [docs/01-architecture.md](docs/01-architecture.md) | System architecture & module map |
-| [docs/02-database-schema.md](docs/02-database-schema.md) | Full ER model & table definitions |
-| [docs/03-api-design.md](docs/03-api-design.md) | REST endpoints & contracts |
-| [docs/04-deployment-guide.md](docs/04-deployment-guide.md) | Production deploy + TLS |
-| [docs/05-admin-user-guide.md](docs/05-admin-user-guide.md) | Operating the admin panel |
+| [docs/02-database-schema.md](docs/02-database-schema.md) | Full ER model & table definitions (current) |
+| [docs/03-api-design.md](docs/03-api-design.md) | REST endpoints & contracts (current) |
+| [docs/04-deployment-guide.md](docs/04-deployment-guide.md) | Production deploy + TLS (older — see runbook below for the IP-only path) |
+| [docs/05-admin-user-guide.md](docs/05-admin-user-guide.md) | Operating the admin panel (current) |
 | [docs/06-developer-onboarding.md](docs/06-developer-onboarding.md) | Local setup, conventions |
 | [docs/07-roadmap.md](docs/07-roadmap.md) | Phased delivery plan |
+| [docs/08-security-review.md](docs/08-security-review.md) | Security model |
+| [docs/10-production-runbook.md](docs/10-production-runbook.md) | Step-by-step IP-only production deploy with self-signed TLS |
+| [docs/99-archive-theme-spec-for-lovable.md](docs/99-archive-theme-spec-for-lovable.md) | Archived — pre-port theme handover, kept for history |
 
 ## Skill files
 

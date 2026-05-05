@@ -1,4 +1,10 @@
-# 09 — Theme spec for Lovable AI
+# 99 — ARCHIVED: Theme spec for Lovable AI
+
+> **Archived 2026-05-05.** The system has since moved off Lovable to the
+> editorial Tailwind-v4 theme that ships in `frontend/src/styles.css`. This
+> document is preserved for historical reference only — it doesn't reflect
+> the current visual identity. To re-skin the app today, edit the `:root`
+> CSS-variable block in `styles.css`; no theme handover doc is needed.
 
 This is a self-contained handover doc. Paste it into Lovable (or any other
 UI-design AI) when you want a polished theme. It describes **what** the app is,
