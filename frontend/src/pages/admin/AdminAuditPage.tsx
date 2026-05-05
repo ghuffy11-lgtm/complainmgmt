@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AuditFilter, AuditService } from '../../services/audit.service';
 import { AuditTimeline } from '../../components/AuditTimeline';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { DynamicFieldsService } from '../../services/dynamic-fields.service';
 
 const ACTIONS = [
@@ -25,10 +26,15 @@ export function AdminAuditPage() {
   );
 
   return (
-    <section>
-      <h2>Audit search</h2>
+    <Card className="p-0 overflow-hidden">
+      <div className="p-4 border-b border-border">
+        <h3 className="font-semibold text-text-main m-0">Audit search</h3>
+        <p className="text-xs text-text-muted mt-0.5 m-0">
+          Append-only journal of every state change. Filter to drill in.
+        </p>
+      </div>
 
-      <div className="toolbar">
+      <div className="toolbar p-4 bg-surface-2/30 border-b border-border">
         <input
           placeholder="Complaint id"
           value={filters.complaintId ?? ''}
@@ -57,31 +63,36 @@ export function AdminAuditPage() {
         <Button variant="ghost" onClick={() => setFilters({ page: 1, pageSize: 50 })}>Clear</Button>
       </div>
 
-      <AuditTimeline
-        entries={q.data?.data ?? []}
-        loading={q.isLoading}
-        showComplaint
-        fieldsByKey={fieldsByKey}
-      />
+      <div className="p-6">
+        <AuditTimeline
+          entries={q.data?.data ?? []}
+          loading={q.isLoading}
+          showComplaint
+          fieldsByKey={fieldsByKey}
+        />
 
-      {q.data && (
-        <div className="row" style={{ marginTop: 12 }}>
-          <span className="muted">
-            Page {q.data.meta.page} · {q.data.data.length} of {q.data.meta.total}
-          </span>
-          <span className="spacer" />
-          <Button
-            variant="secondary"
-            disabled={(filters.page ?? 1) <= 1}
-            onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, (f.page ?? 1) - 1) }))}
-          >Previous</Button>
-          <Button
-            variant="secondary"
-            disabled={(filters.page ?? 1) * (filters.pageSize ?? 50) >= q.data.meta.total}
-            onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
-          >Next</Button>
-        </div>
-      )}
-    </section>
+        {q.data && (
+          <div className="flex items-center justify-between pt-4 mt-4 border-t border-border">
+            <span className="text-xs text-text-muted">
+              Page {q.data.meta.page} · {q.data.data.length} of {q.data.meta.total}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={(filters.page ?? 1) <= 1}
+                onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, (f.page ?? 1) - 1) }))}
+              >Previous</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={(filters.page ?? 1) * (filters.pageSize ?? 50) >= q.data.meta.total}
+                onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
+              >Next</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }

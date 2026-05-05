@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UsersService } from '../../services/users.service';
 import { RolesService } from '../../services/roles.service';
 import { DepartmentsService } from '../../services/departments.service';
+import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -33,14 +35,14 @@ export function AdminUsersPage() {
   });
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>Users</h2>
-        <span className="spacer" />
-        {canManage && <Button onClick={() => setCreating(true)}>New user</Button>}
+    <Card className="p-0 overflow-hidden">
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <h3 className="font-semibold text-text-main m-0">Users</h3>
+        {canManage && (
+          <Button size="sm" icon={<Plus size={14} />} onClick={() => setCreating(true)}>New user</Button>
+        )}
       </div>
-
-      {usersQ.isLoading && <p className="muted">Loading…</p>}
+      {usersQ.isLoading && <p className="muted p-4">Loading…</p>}
       {usersQ.data && (
         <table>
           <thead>
@@ -112,7 +114,7 @@ export function AdminUsersPage() {
           onDone={() => setResetting(null)}
         />
       )}
-    </section>
+    </Card>
   );
 }
 

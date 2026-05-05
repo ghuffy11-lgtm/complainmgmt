@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PermissionsService, RolesService } from '../../services/roles.service';
+import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
+import { cn } from '../../lib/utils';
 import type { Permission, Role } from '../../types/api';
 
 /**
@@ -42,35 +45,40 @@ export function AdminRolesPage() {
   });
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>Roles &amp; Permissions</h2>
-        <span className="spacer" />
-        {canManage && <Button onClick={() => setCreating(true)}>New role</Button>}
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-text-main m-0">Roles &amp; Permissions</h3>
+          <p className="text-xs text-text-muted mt-0.5 m-0">
+            Pick a role on the left to edit its permissions on the right.
+          </p>
+        </div>
+        {canManage && (
+          <Button size="sm" icon={<Plus size={14} />} onClick={() => setCreating(true)}>New role</Button>
+        )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
-        <div className="card" style={{ padding: 0 }}>
-          {(rolesQ.data ?? []).map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSelectedId(r.id)}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                padding: '10px 14px',
-                border: 'none',
-                background: selectedId === r.id ? 'var(--surface-2)' : 'transparent',
-                borderLeft: selectedId === r.id ? '3px solid var(--primary)' : '3px solid transparent',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontWeight: 500 }}>{r.name}</div>
-              <div className="mono muted" style={{ fontSize: 12 }}>
-                {r.key} {r.isSystem && <span className="badge" style={{ marginLeft: 4 }}>system</span>}
-              </div>
-            </button>
-          ))}
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
+        <Card className="p-0 overflow-hidden">
+          <div className="divide-y divide-border">
+            {(rolesQ.data ?? []).map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setSelectedId(r.id)}
+                className={cn(
+                  'block w-full text-left px-4 py-3 transition-colors hover:bg-surface-hover',
+                  selectedId === r.id && 'bg-primary-bg/40 border-l-2 border-l-primary',
+                )}
+              >
+                <div className="font-medium text-text-main">{r.name}</div>
+                <div className="font-mono text-xs text-text-muted mt-0.5">
+                  {r.key}
+                  {r.isSystem && <span className="badge ml-1.5">system</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
 
         <div>
           {selected ? (

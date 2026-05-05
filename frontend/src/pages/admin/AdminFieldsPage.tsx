@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DynamicFieldsService, OptionInput } from '../../services/dynamic-fields.service';
+import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -29,18 +31,20 @@ export function AdminFieldsPage() {
   });
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>Complaint fields</h2>
-        <span className="spacer" />
-        {canManage && <Button onClick={() => setCreating(true)}>New field</Button>}
+    <Card className="p-0 overflow-hidden">
+      <div className="p-4 border-b border-border flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-semibold text-text-main m-0">Complaint fields</h3>
+          <p className="text-xs text-text-muted mt-0.5 m-0">
+            Adding a field automatically provisions <span className="mono">complaint.field:&lt;key&gt;:read|write|override</span> permissions in the role grid.
+          </p>
+        </div>
+        {canManage && (
+          <Button size="sm" icon={<Plus size={14} />} onClick={() => setCreating(true)}>New field</Button>
+        )}
       </div>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Adding a field automatically provisions <span className="mono">complaint.field:&lt;key&gt;:read|write|override</span>{' '}
-        permissions in the role grid.
-      </p>
 
-      {fieldsQ.isLoading && <p className="muted">Loading…</p>}
+      {fieldsQ.isLoading && <p className="muted p-4">Loading…</p>}
       {fieldsQ.data && (
         <table>
           <thead>
@@ -106,7 +110,7 @@ export function AdminFieldsPage() {
           onSaved={() => { qc.invalidateQueries({ queryKey: ['admin', 'fields'] }); setOptionsFor(null); }}
         />
       )}
-    </section>
+    </Card>
   );
 }
 

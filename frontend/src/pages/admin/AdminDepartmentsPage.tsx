@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DepartmentsService } from '../../services/departments.service';
+import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -25,14 +27,15 @@ export function AdminDepartmentsPage() {
   });
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>Departments</h2>
-        <span className="spacer" />
-        {canManage && <Button onClick={() => setCreating(true)}>New department</Button>}
+    <Card className="p-0 overflow-hidden">
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <h3 className="font-semibold text-text-main m-0">Departments</h3>
+        {canManage && (
+          <Button size="sm" icon={<Plus size={14} />} onClick={() => setCreating(true)}>New department</Button>
+        )}
       </div>
 
-      {q.isLoading && <p className="muted">Loading…</p>}
+      {q.isLoading && <p className="muted p-4">Loading…</p>}
       {q.data && (
         <table>
           <thead><tr><th>Key</th><th>Name</th><th>Active</th><th></th></tr></thead>
@@ -73,7 +76,7 @@ export function AdminDepartmentsPage() {
           onSaved={() => { qc.invalidateQueries({ queryKey: ['departments'] }); setEditing(null); }}
         />
       )}
-    </section>
+    </Card>
   );
 }
 

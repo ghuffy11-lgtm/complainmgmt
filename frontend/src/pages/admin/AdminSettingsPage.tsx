@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SettingsService } from '../../services/settings.service';
+import { Save } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -41,36 +43,30 @@ export function AdminSettingsPage() {
     onError: (err) => toast.error(errorMessage(err)),
   });
 
-  if (q.isLoading) return <p className="muted">Loading…</p>;
+  if (q.isLoading) return <p className="text-text-muted">Loading…</p>;
 
   return (
-    <section>
-      <h2>System settings</h2>
-      <p className="muted">
-        Each setting is stored as JSON. Strings need quotes (<code className="mono">"value"</code>); numbers and arrays
-        are written without.
-      </p>
-      <div className="card">
-        {Object.keys(draft).map((key) => (
-          <div key={key} className="field">
-            <label className="mono">{key}</label>
-            <textarea
-              className="mono"
-              value={draft[key]}
-              disabled={!canManage}
-              onChange={(e) => setDraft((s) => ({ ...s, [key]: e.target.value }))}
-              rows={2}
-            />
-          </div>
-        ))}
-        {canManage && (
-          <div className="row-end" style={{ marginTop: 8 }}>
-            <Button onClick={() => m.mutate()} disabled={m.isPending}>
-              {m.isPending ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        )}
-      </div>
-    </section>
+    <Card
+      title="System settings"
+      subtitle='Each setting is stored as JSON. Strings need quotes ("value"); numbers and arrays are written without.'
+      headerAction={canManage ? (
+        <Button size="sm" icon={<Save size={14} />} isLoading={m.isPending} onClick={() => m.mutate()}>
+          Save
+        </Button>
+      ) : undefined}
+    >
+      {Object.keys(draft).map((key) => (
+        <div key={key} className="field">
+          <label className="mono text-[12px] font-medium text-text-main">{key}</label>
+          <textarea
+            className="mono w-full bg-surface border border-border-strong rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
+            value={draft[key]}
+            disabled={!canManage}
+            onChange={(e) => setDraft((s) => ({ ...s, [key]: e.target.value }))}
+            rows={2}
+          />
+        </div>
+      ))}
+    </Card>
   );
 }
