@@ -15,9 +15,26 @@ import type { ComplaintPriority, ComplaintStatus, DynamicField } from '../types/
 const STATUSES: ComplaintStatus[] = ['open', 'in_progress', 'resolved', 'closed', 'rejected'];
 const PRIORITIES: ComplaintPriority[] = ['low', 'normal', 'high', 'critical'];
 
+/**
+ * Deferred filter shape — text/date/dynamic-field inputs that only fire on
+ * Search/Enter. Discrete dropdowns (status/priority/departmentId) bypass
+ * this and apply immediately.
+ */
+type DraftFilters = {
+  q?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  fv?: Record<string, string>;
+};
+
 export function ComplaintsListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = React.useState<ListParams>(() => filtersFromQuery(searchParams));
+  const [draft, setDraft] = React.useState<DraftFilters>(() => pickDraft(filtersFromQuery(searchParams)));
+  // Tracks whether the user has touched the draft inputs since the last
+  // commit/reset. Protects unsaved typing from being wiped when a dropdown
+  // (status / priority / department) auto-commits and triggers a URL change.
+  const draftDirtyRef = React.useRef(false);
   const nav = useNavigate();
   const { has } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
@@ -26,8 +43,14 @@ export function ComplaintsListPage() {
     (f) => f.isSearchable && f.isActive && (f.type === 'text' || f.type === 'number' || f.type === 'dropdown'),
   );
 
+  // External URL changes (e.g. dashboard click-through to ?status=open) re-pick
+  // the committed filters. Only resync the draft inputs when the user hasn't
+  // typed anything yet — otherwise we'd erase in-progress text on every
+  // dropdown change.
   React.useEffect(() => {
-    setFilters((prev) => ({ ...filtersFromQuery(searchParams), pageSize: prev.pageSize ?? 25 }));
+    const next = filtersFromQuery(searchParams);
+    setFilters((prev) => ({ ...next, pageSize: prev.pageSize ?? 25 }));
+    if (!draftDirtyRef.current) setDraft(pickDraft(next));
   }, [searchParams]);
 
   const { data, isLoading, error } = useQuery({
@@ -35,21 +58,52 @@ export function ComplaintsListPage() {
     queryFn: () => ComplaintsService.list(filters),
   });
 
+  /** Mark the draft as user-touched and apply an updater. */
+  const editDraft = (updater: (s: DraftFilters) => DraftFilters) => {
+    draftDirtyRef.current = true;
+    setDraft(updater);
+  };
+
+  /** Commit a patch immediately — used by status / priority / department dropdowns. */
   const apply = (patch: Partial<ListParams>) => {
     const next = { ...filters, ...patch, page: 1 };
     setFilters(next);
     setSearchParams(queryFromFilters(next), { replace: true });
   };
-  const applyFv = (key: string, value: string | undefined) => {
-    const fv = { ...(filters.fv ?? {}) };
-    if (value && value.trim() !== '') fv[key] = value;
-    else delete fv[key];
-    apply({ fv: Object.keys(fv).length > 0 ? fv : undefined });
+
+  /** Commit the draft (q / dates / fv) — fired by Search button or Enter. */
+  const commitDraft = () => {
+    const next: ListParams = {
+      ...filters,
+      q: draft.q?.trim() || undefined,
+      dateFrom: draft.dateFrom || undefined,
+      dateTo: draft.dateTo || undefined,
+      fv: draft.fv && Object.keys(draft.fv).length > 0 ? draft.fv : undefined,
+      page: 1,
+    };
+    draftDirtyRef.current = false;
+    setFilters(next);
+    setSearchParams(queryFromFilters(next), { replace: true });
   };
+
+  const updateDraftFv = (key: string, value: string) => {
+    editDraft((s) => {
+      const fv = { ...(s.fv ?? {}) };
+      if (value && value.trim() !== '') fv[key] = value;
+      else delete fv[key];
+      return { ...s, fv: Object.keys(fv).length > 0 ? fv : undefined };
+    });
+  };
+
   const reset = () => {
-    setFilters({ page: 1, pageSize: 25 });
+    const empty: ListParams = { page: 1, pageSize: 25 };
+    draftDirtyRef.current = false;
+    setFilters(empty);
+    setDraft({});
     setSearchParams({}, { replace: true });
   };
+
+  const draftDirty = !sameDraft(draft, pickDraft(filters));
   const hasFvFilter = filters.fv && Object.keys(filters.fv).length > 0;
   const hasAnyFilter =
     !!(filters.q || filters.status || filters.priority || filters.departmentId || filters.dateFrom || filters.dateTo || hasFvFilter);
@@ -71,15 +125,25 @@ export function ComplaintsListPage() {
       </div>
 
       <Card className="p-0 overflow-hidden">
-        {/* Toolbar */}
-        <div className="p-4 border-b border-border bg-surface-2/30 flex flex-wrap items-center gap-3">
+        {/* Toolbar
+         * Discrete dropdowns (status / priority / department) commit on
+         * change — they're cheap and the user wants the result instantly.
+         * Text / date / dynamic-field inputs hold draft state and only
+         * commit on Search (or Enter inside any of them). */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            commitDraft();
+          }}
+          className="p-4 border-b border-border bg-surface-2/30 flex flex-wrap items-center gap-3"
+        >
           <div className="relative flex-1 min-w-[220px] max-w-[280px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle w-4 h-4 pointer-events-none" />
             <input
               type="search"
-              placeholder="Search reference…"
-              value={filters.q ?? ''}
-              onChange={(e) => apply({ q: e.target.value || undefined })}
+              placeholder="Reference (press Enter)"
+              value={draft.q ?? ''}
+              onChange={(e) => editDraft((s) => ({ ...s, q: e.target.value }))}
               className="w-full bg-surface border border-border-strong rounded-md h-9 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
             />
           </div>
@@ -113,30 +177,40 @@ export function ComplaintsListPage() {
 
           <DateRangeInput
             label="From"
-            value={filters.dateFrom ?? ''}
-            onChange={(v) => apply({ dateFrom: v || undefined })}
+            value={draft.dateFrom ?? ''}
+            onChange={(v) => editDraft((s) => ({ ...s, dateFrom: v }))}
           />
           <DateRangeInput
             label="To"
-            value={filters.dateTo ?? ''}
-            onChange={(v) => apply({ dateTo: v || undefined })}
+            value={draft.dateTo ?? ''}
+            onChange={(v) => editDraft((s) => ({ ...s, dateTo: v }))}
           />
 
           {searchableFields.map((f) => (
             <SearchableFieldInput
               key={f.id}
               field={f}
-              value={filters.fv?.[f.key] ?? ''}
-              onChange={(v) => applyFv(f.key, v)}
+              value={draft.fv?.[f.key] ?? ''}
+              onChange={(v) => updateDraftFv(f.key, v)}
             />
           ))}
 
-          {hasAnyFilter && (
-            <Button variant="ghost" size="sm" onClick={reset} className="ml-auto">
-              Clear filters
+          <div className="flex items-center gap-2 ml-auto">
+            <Button
+              type="submit"
+              size="sm"
+              variant={draftDirty ? 'primary' : 'secondary'}
+              icon={<Search size={14} />}
+            >
+              Search
             </Button>
-          )}
-        </div>
+            {hasAnyFilter && (
+              <Button type="button" variant="ghost" size="sm" onClick={reset}>
+                Clear
+              </Button>
+            )}
+          </div>
+        </form>
 
         {/* Table */}
         <div className="overflow-x-auto">
@@ -324,6 +398,29 @@ function filtersFromQuery(sp: URLSearchParams): ListParams {
     dateTo: get('dateTo'),
     fv: Object.keys(fv).length > 0 ? fv : undefined,
   };
+}
+
+/** Pull the deferred fields out of a committed `ListParams`. */
+function pickDraft(f: ListParams): DraftFilters {
+  return {
+    q: f.q,
+    dateFrom: f.dateFrom,
+    dateTo: f.dateTo,
+    fv: f.fv,
+  };
+}
+
+/** Compare two drafts ignoring undefined/empty differences — used to disable
+ *  the Search button when the inputs already match what's been applied. */
+function sameDraft(a: DraftFilters, b: DraftFilters): boolean {
+  if ((a.q ?? '') !== (b.q ?? '')) return false;
+  if ((a.dateFrom ?? '') !== (b.dateFrom ?? '')) return false;
+  if ((a.dateTo ?? '') !== (b.dateTo ?? '')) return false;
+  const ka = Object.keys(a.fv ?? {});
+  const kb = Object.keys(b.fv ?? {});
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if ((a.fv?.[k] ?? '') !== (b.fv?.[k] ?? '')) return false;
+  return true;
 }
 
 function queryFromFilters(f: ListParams): Record<string, string> {
