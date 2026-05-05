@@ -5,8 +5,8 @@ export type Summary = {
   /** Currently active (status ∈ {open, in_progress}). */
   open: number;
   highPriority: number;
-  /** Echoed by the server so the UI can show "Department: X". null = full view. */
-  scopedToDepartmentId: string | null;
+  /** Echoed by the server so the UI can show which depts are in scope. null = full view. */
+  scopedToDepartmentIds: string[] | null;
 };
 
 export type AgingBucket = { bucket: '0-1d' | '1-7d' | '7-30d' | '30d+'; count: number };

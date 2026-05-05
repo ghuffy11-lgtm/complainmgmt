@@ -2,8 +2,10 @@ export type Me = {
   id: number;
   username: string;
   displayName: string;
-  /** Home department; null when not assigned. Used by the user dashboard scope. */
+  /** Primary / "home" department; null when not assigned. Defaults form pickers. */
   departmentId: string | null;
+  /** Every active department the user belongs to. Used by `*.own:read` scoping. */
+  departmentIds: string[];
   roleKeys: string[];
   permissions: string[];
 };
@@ -122,7 +124,10 @@ export type UserSummary = {
   email: string | null;
   isActive: boolean;
   authProvider: 'local' | 'ldap';
+  /** Primary department — defaults form pickers. */
   departmentId: string | null;
+  /** All active department memberships. */
+  departmentIds: string[];
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;

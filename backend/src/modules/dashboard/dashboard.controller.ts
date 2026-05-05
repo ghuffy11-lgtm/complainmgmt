@@ -11,10 +11,11 @@ import { hasPermission } from '../permissions/permission-resolver';
  * Dashboard endpoints support two access tiers:
  *
  *   * `dashboard:read`     — full picture (all departments). Manager/admin.
- *   * `dashboard.own:read` — scoped to the caller's `departmentId`. Granted
- *                            to supervisor + employee. The endpoint forces
- *                            the filter regardless of any client query
- *                            param, so non-managers can't peek across.
+ *   * `dashboard.own:read` — scoped to the caller's active department
+ *                            memberships. Granted to supervisor + employee.
+ *                            The endpoint forces the filter regardless of
+ *                            any client query param, so non-managers can't
+ *                            peek across.
  *
  * Callers with `dashboard:read` may *optionally* request a specific
  * department via `?departmentId=…` to narrow the full dashboard.
@@ -23,28 +24,35 @@ import { hasPermission } from '../permissions/permission-resolver';
 export class DashboardController {
   constructor(@InjectRepository(ComplaintEntity) private readonly complaints: Repository<ComplaintEntity>) {}
 
-  /** Resolves the effective department filter for the request. Throws when
-   *  a scoped user has no home department to scope to. */
-  private resolveScope(actor: AuthUser, requested?: string): string | null {
+  /** Resolves the effective department filter for the request.
+   *  Returns:
+   *    - `null` (full picture) when caller has dashboard:read and didn't ask to narrow.
+   *    - `[deptId]` when caller has dashboard:read and supplied ?departmentId=.
+   *    - `actor.departmentIds` when caller has only dashboard.own:read.
+   *  Throws NO_DEPARTMENTS when a scoped caller has no active memberships. */
+  private resolveScope(actor: AuthUser, requested?: string): string[] | null {
     const hasFullAccess = hasPermission(actor.permissions, 'dashboard:read');
     if (hasFullAccess) {
-      return requested && requested.trim() ? requested : null;
+      return requested && requested.trim() ? [requested] : null;
     }
-    if (!actor.departmentId) {
+    const ids = (actor.departmentIds ?? []).filter((d) => d && d.trim());
+    if (ids.length === 0) {
       throw new ForbiddenException({
-        code: 'NO_HOME_DEPARTMENT',
-        hint: 'Ask an admin to set your home department.',
+        code: 'NO_DEPARTMENTS',
+        hint: 'Ask an admin to add you to at least one department.',
       });
     }
-    return actor.departmentId;
+    return ids;
   }
 
   /** Apply the scope to a query builder. */
   private scoped<T extends ComplaintEntity>(
     qb: SelectQueryBuilder<T>,
-    deptId: string | null,
+    deptIds: string[] | null,
   ): SelectQueryBuilder<T> {
-    if (deptId !== null) qb.andWhere('c.assigned_department_id = :scopeDept', { scopeDept: deptId });
+    if (deptIds !== null) {
+      qb.andWhere('c.assigned_department_id IN (:...scopeDepts)', { scopeDepts: deptIds });
+    }
     return qb;
   }
 
@@ -61,7 +69,7 @@ export class DashboardController {
       this.complaints.createQueryBuilder('c').where('c.priority IN (:...hi)', { hi: ['high', 'critical'] }),
       dept,
     ).getCount();
-    return { total, open, highPriority: high, scopedToDepartmentId: dept };
+    return { total, open, highPriority: high, scopedToDepartmentIds: dept };
   }
 
   @Get('by-status')
@@ -161,8 +169,8 @@ export class DashboardController {
     const params: unknown[] = [days];
     let scopeClause = '';
     if (dept !== null) {
-      scopeClause = ' AND c.assigned_department_id = $2';
-      params.push(dept);
+      scopeClause = ' AND c.assigned_department_id = ANY($2::bigint[])';
+      params.push(dept.map((d) => Number(d)));
     }
 
     const perComplaint = await this.complaints.manager.query<

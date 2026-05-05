@@ -62,14 +62,15 @@ export function DashboardPage() {
   const isScopedOnly = !isFullView && has('dashboard.own:read');
 
   if (isScopedOnly) {
-    if (!user?.departmentId) {
+    const memberCount = user?.departmentIds?.length ?? 0;
+    if (memberCount === 0) {
       return (
         <section className="space-y-6">
           <h1 className="text-2xl font-bold tracking-tight m-0">Dashboard</h1>
           <Card>
             <p className="muted m-0">
-              Your account isn't linked to a department yet, so there's nothing to scope the
-              dashboard to. Ask an admin to set your home department on Admin → Users.
+              You're not assigned to any department yet, so there's nothing to scope the
+              dashboard to. Ask an admin to add you to one or more departments on Admin → Users.
             </p>
           </Card>
         </section>
@@ -194,7 +195,14 @@ function ManagerDashboard() {
 function UserDashboard() {
   const { user } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
-  const myDeptName = departmentsQ.data?.find((d) => d.id === user?.departmentId)?.name ?? 'your department';
+  const myDeptIds = user?.departmentIds ?? [];
+  const myDeptNames = myDeptIds
+    .map((id) => departmentsQ.data?.find((d) => d.id === id)?.name)
+    .filter((n): n is string => !!n);
+  const myDeptLabel =
+    myDeptNames.length === 0 ? 'your departments'
+    : myDeptNames.length === 1 ? myDeptNames[0]
+    : `${myDeptNames.length} departments`;
 
   const summaryQ = useQuery({ queryKey: ['dashboard', 'summary', 'mine'], queryFn: () => DashboardService.summary() });
   const statusQ = useQuery({ queryKey: ['dashboard', 'by-status', 'mine'], queryFn: () => DashboardService.byStatus() });
@@ -206,22 +214,25 @@ function UserDashboard() {
   const trendSeries = useZeroFilledTrend(trendQ.data?.data, days);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
-  const linkBase = `/complaints?departmentId=${user?.departmentId ?? ''}`;
+  // Click-throughs land on the complaints list which already scopes to the
+  // user's departments via complaint.own:read — no extra ?departmentId
+  // needed (and supplying just one would be wrong for multi-dept users).
+  const linkBase = '/complaints';
 
   return (
     <section className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
-          <Badge variant="primary">{myDeptName}</Badge>
+          <Badge variant="primary">{myDeptLabel}</Badge>
         </div>
         <p className="text-sm text-text-muted mt-1">Showing complaints assigned to your department.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KpiLink to={linkBase} label="Total complaints" value={summaryQ.data?.total ?? '—'} />
-        <KpiLink to={`${linkBase}&status=open`} label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
-        <KpiLink to={`${linkBase}&priority=critical`} label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
+        <KpiLink to={`${linkBase}?status=open`} label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
+        <KpiLink to={`${linkBase}?priority=critical`} label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
       </div>
 
       <Card
@@ -240,7 +251,7 @@ function UserDashboard() {
             name: r.status.replace('_', ' '),
             value: r.count,
             color: STATUS_COLORS[r.status] ?? SLATE_500,
-            link: `${linkBase}&status=${encodeURIComponent(r.status)}`,
+            link: `${linkBase}?status=${encodeURIComponent(r.status)}`,
           }))}
           loading={statusQ.isLoading}
         />
@@ -250,7 +261,7 @@ function UserDashboard() {
             key: r.priority,
             count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
-            link: `${linkBase}&priority=${encodeURIComponent(r.priority)}`,
+            link: `${linkBase}?priority=${encodeURIComponent(r.priority)}`,
           }))}
           loading={priorityQ.isLoading}
         />
