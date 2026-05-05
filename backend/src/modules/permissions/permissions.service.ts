@@ -20,18 +20,25 @@ export class PermissionsService {
 
   /** Build the full AuthUser snapshot used by guards and services. */
   async materialize(user: UserEntity): Promise<AuthUser> {
-    const rows = await this.dataSource.query<{ resource: string; action: string; role_key: string }[]>(
-      `SELECT DISTINCT p.resource, p.action, r.key AS role_key
-         FROM user_roles ur
-         JOIN roles r              ON r.id = ur.role_id
-         JOIN role_permissions rp  ON rp.role_id = r.id
-         JOIN permissions p        ON p.id = rp.permission_id
-        WHERE ur.user_id = $1`,
-      [user.id],
-    );
+    const [permRows, deptRows] = await Promise.all([
+      this.dataSource.query<{ resource: string; action: string; role_key: string }[]>(
+        `SELECT DISTINCT p.resource, p.action, r.key AS role_key
+           FROM user_roles ur
+           JOIN roles r              ON r.id = ur.role_id
+           JOIN role_permissions rp  ON rp.role_id = r.id
+           JOIN permissions p        ON p.id = rp.permission_id
+          WHERE ur.user_id = $1`,
+        [user.id],
+      ),
+      this.dataSource.query<{ department_id: string }[]>(
+        `SELECT department_id FROM user_departments
+          WHERE user_id = $1 AND is_active = TRUE`,
+        [user.id],
+      ),
+    ]);
     const permissions = new Set<string>();
     const roleKeys = new Set<string>();
-    for (const r of rows) {
+    for (const r of permRows) {
       permissions.add(`${r.resource}:${r.action}`);
       roleKeys.add(r.role_key);
     }
@@ -40,6 +47,7 @@ export class PermissionsService {
       username: user.username,
       displayName: user.displayName,
       departmentId: user.departmentId,
+      departmentIds: deptRows.map((d) => String(d.department_id)),
       roleKeys: Array.from(roleKeys),
       permissions,
     };

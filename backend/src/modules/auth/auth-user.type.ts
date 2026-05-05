@@ -3,9 +3,13 @@ export type AuthUser = {
   id: number;
   username: string;
   displayName: string;
-  /** "Home" department id, used by the scoped user dashboard. Null when the
-   *  user isn't tied to one (typical for admin/manager accounts). */
+  /** "Home" / primary department id, used to default form pickers. Null when
+   *  the user isn't tied to one (typical for admin/manager accounts). */
   departmentId: string | null;
+  /** Every active department the user belongs to (includes the primary).
+   *  Used by `*.own:read` permissions to scope visibility. Empty array for
+   *  users with no memberships (e.g. spanning admins). */
+  departmentIds: string[];
   roleKeys: string[];
   permissions: Set<string>;     // "resource:action"
 };

@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { UserEntity } from './entities/user.entity';
+import { UserDepartmentEntity } from './entities/user-department.entity';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
@@ -18,7 +19,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity]),
+    TypeOrmModule.forFeature([UserEntity, UserDepartmentEntity, RefreshTokenEntity]),
     PermissionsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

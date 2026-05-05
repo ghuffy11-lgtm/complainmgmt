@@ -36,6 +36,8 @@ function makeAuthUser(): AuthUser {
     id: 1,
     username: 'alice',
     displayName: 'Alice',
+    departmentId: null,
+    departmentIds: [],
     roleKeys: ['employee'],
     permissions: new Set(['complaint:read']),
   };

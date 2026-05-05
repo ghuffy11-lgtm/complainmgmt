@@ -2,8 +2,20 @@ import { PermissionsService } from './permissions.service';
 import { UserEntity } from '../auth/entities/user.entity';
 
 describe('PermissionsService.materialize', () => {
-  function build(rows: { resource: string; action: string; role_key: string }[]) {
-    const dataSource = { query: jest.fn(async () => rows) } as never;
+  function build(
+    rows: { resource: string; action: string; role_key: string }[],
+    deptIds: string[] = [],
+  ) {
+    // materialize() runs two queries via Promise.all — dispatch by SQL
+    // fragment so the spec doesn't depend on call order.
+    const dataSource = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes('user_departments')) {
+          return deptIds.map((id) => ({ department_id: id }));
+        }
+        return rows;
+      }),
+    } as never;
     return new PermissionsService(
       {} as never,
       {} as never,
@@ -53,5 +65,11 @@ describe('PermissionsService.materialize', () => {
     const svc = build([{ resource: 'complaint.field:*', action: 'write', role_key: 'supervisor' }]);
     const u = await svc.materialize(user());
     expect(u.permissions.has('complaint.field:*:write')).toBe(true);
+  });
+
+  it('populates active department memberships into departmentIds', async () => {
+    const svc = build([], ['3', '7']);
+    const u = await svc.materialize(user());
+    expect(u.departmentIds).toEqual(['3', '7']);
   });
 });

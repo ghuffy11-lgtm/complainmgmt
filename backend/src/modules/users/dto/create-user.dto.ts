@@ -41,9 +41,16 @@ export class CreateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
-  /** "Home" department for the user — used by the scoped user dashboard. */
+  /** Primary department — defaults form pickers, must be one of departmentIds. */
   @IsOptional() @IsString()
   departmentId?: string;
+
+  /** All departments the user belongs to. Replaces any previous set on update. */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  departmentIds?: string[];
 }
 
 export class UpdateUserDto {
@@ -61,11 +68,18 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
-  /** Update or clear the user's home department. `null` clears, omit keeps. */
+  /** Update or clear the user's primary department. `null` clears, omit keeps. */
   @IsOptional()
   @ValidateIf((_o, v) => v !== null)
   @IsString()
   departmentId?: string | null;
+
+  /** Replace the user's department membership set. Omit to leave unchanged. */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  departmentIds?: string[];
 }
 
 export class SetUserRolesDto {

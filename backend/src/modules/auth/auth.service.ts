@@ -86,6 +86,7 @@ export class AuthService {
       username: u.username,
       displayName: u.displayName,
       departmentId: u.departmentId,
+      departmentIds: u.departmentIds,
       roleKeys: u.roleKeys,
       permissions: Array.from(u.permissions),
     };
