@@ -83,7 +83,10 @@ export function AppLayout() {
     .toUpperCase();
 
   return (
-    <div className="flex h-screen bg-bg overflow-hidden">
+    <div
+      className="flex h-screen bg-bg overflow-hidden"
+      style={{ ['--cts-sidebar-width' as string]: collapsed ? '64px' : '240px' }}
+    >
       <aside
         className={cn(
           'bg-sidebar text-sidebar-text flex flex-col shrink-0 transition-[width] duration-200',

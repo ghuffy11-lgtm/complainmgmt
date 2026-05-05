@@ -1,14 +1,17 @@
-import { useRef, useState } from 'react';
+import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Check, Paperclip, Plus, X } from 'lucide-react';
 import { ComplaintsService } from '../services/complaints.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { DepartmentsService } from '../services/departments.service';
 import { UsersService } from '../services/users.service';
 import { DynamicFieldRenderer } from '../components/DynamicFieldRenderer';
 import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
+import { cn } from '../lib/utils';
 import {
   ACCEPT_ATTR,
   ALLOWED_MIME_LABEL,
@@ -34,20 +37,17 @@ export function ComplaintCreatePage() {
     enabled: canSeeUsers,
   });
 
-  const [values, setValues] = useState<Record<string, unknown>>({});
-  const [priority, setPriority] = useState<ComplaintPriority>('normal');
-  const [departmentId, setDepartmentId] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [complaintDate, setComplaintDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [errors, setErrors] = useState<Record<string, string[]>>({});
+  const [values, setValues] = React.useState<Record<string, unknown>>({});
+  const [priority, setPriority] = React.useState<ComplaintPriority>('normal');
+  const [departmentId, setDepartmentId] = React.useState('');
+  const [assignedTo, setAssignedTo] = React.useState('');
+  const [complaintDate, setComplaintDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [errors, setErrors] = React.useState<Record<string, string[]>>({});
 
-  // Files queued in the form. They're not uploaded until the complaint is
-  // created (and we know its id). On partial failure we navigate to the
-  // detail page with a warning toast naming the failures — see submit().
-  const [pending, setPending] = useState<File[]>([]);
-  const [over, setOver] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = React.useState<File[]>([]);
+  const [over, setOver] = React.useState(false);
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = React.useState(false);
 
   const queue = (file: File | null | undefined) => {
     if (!file) return;
@@ -73,10 +73,6 @@ export function ComplaintCreatePage() {
         complaintDate: complaintDate || undefined,
       });
 
-      // Upload queued files in order. Warning-and-continue on per-file
-      // failure: the complaint is already created, so navigate the user to
-      // detail with a clear message naming what didn't make it. They can
-      // retry from the AttachmentsPanel.
       const failures: string[] = [];
       for (const f of pending) {
         try {
@@ -112,84 +108,118 @@ export function ComplaintCreatePage() {
     }
   };
 
-  if (fieldsQ.isLoading) return <p className="muted">Loading form…</p>;
+  if (fieldsQ.isLoading) return <p className="text-text-muted">Loading form…</p>;
 
   return (
-    <section>
-      <h1>New complaint</h1>
+    <section className="max-w-3xl mx-auto pb-24">
+      <div className="flex items-center gap-3 mb-6">
+        <Button variant="ghost" size="sm" onClick={() => nav('/complaints')} className="px-2">
+          <ArrowLeft size={18} />
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">New complaint</h1>
+          <p className="text-sm text-text-muted mt-1">
+            Register a new patient feedback or incident.
+          </p>
+        </div>
+      </div>
 
       <form
-        className="card"
-        onSubmit={(e) => { e.preventDefault(); submit(); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+        className="space-y-6"
       >
-        <div className="field">
-          <label>Complaint date</label>
-          <input
-            type="date"
-            value={complaintDate}
-            max={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => setComplaintDate(e.target.value)}
-          />
-          <span className="hint">
-            When the complaint actually occurred. Defaults to today; can be backdated for events recorded later.
-          </span>
-        </div>
-
-        {(fieldsQ.data ?? []).map((f) => (
-          <DynamicFieldRenderer
-            key={f.id}
-            field={f}
-            value={values[f.key]}
-            onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
-            error={errors[f.key]?.join(', ')}
-          />
-        ))}
-
-        <div className="field">
-          <label>Priority</label>
-          <select value={priority} onChange={(e) => setPriority(e.target.value as ComplaintPriority)}>
-            {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-
-        <div className="field">
-          <label>Department (optional)</label>
-          <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-            <option value="">— unassigned —</option>
-            {(departmentsQ.data ?? []).filter((d) => d.isActive).map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {canSeeUsers && (
+        <Card title="Incident details" subtitle="When the complaint occurred and what was reported">
           <div className="field">
-            <label>Assigned to (optional)</label>
-            <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
-              <option value="">— department queue —</option>
-              {(usersQ.data?.data ?? []).filter((u) => u.isActive).map((u) => (
-                <option key={u.id} value={u.id}>{u.displayName} ({u.username})</option>
-              ))}
-            </select>
+            <label className="text-[13px] font-medium text-text-main">Complaint date</label>
+            <input
+              type="date"
+              value={complaintDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setComplaintDate(e.target.value)}
+              className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
             <span className="hint">
-              Leave unassigned to route to the department queue. Reassignment later requires `complaint:assign`.
+              When the complaint actually occurred. Defaults to today; can be backdated for events recorded later.
             </span>
           </div>
-        )}
 
-        {/* ─── Attachments queue ───────────────────────────────────────── */}
-        <div className="field">
-          <label>Attachments (optional)</label>
-          <span className="hint">
-            Up to {MAX_FILES} files · max 2 MB each · {ALLOWED_MIME_LABEL}. Files upload after the
-            complaint is saved.
-          </span>
+          {(fieldsQ.data ?? []).map((f) => (
+            <DynamicFieldRenderer
+              key={f.id}
+              field={f}
+              value={values[f.key]}
+              onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
+              error={errors[f.key]?.join(', ')}
+            />
+          ))}
+        </Card>
+
+        <Card title="Classification" subtitle="Initial routing and priority assessment">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="field">
+              <label className="text-[13px] font-medium text-text-main">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as ComplaintPriority)}
+                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            <div className="field">
+              <label className="text-[13px] font-medium text-text-main">Department</label>
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">— unassigned —</option>
+                {(departmentsQ.data ?? [])
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          {canSeeUsers && (
+            <div className="field">
+              <label className="text-[13px] font-medium text-text-main">Assigned to</label>
+              <select
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">— department queue —</option>
+                {(usersQ.data?.data ?? [])
+                  .filter((u) => u.isActive)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName} ({u.username})
+                    </option>
+                  ))}
+              </select>
+              <span className="hint">
+                Leave unassigned to route to the department queue. Reassignment later requires <code className="mono">complaint:assign</code>.
+              </span>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Attachments" subtitle={`Up to ${MAX_FILES} files · max 2 MB each · ${ALLOWED_MIME_LABEL}`}>
           {pending.length < MAX_FILES && (
             <div
-              className={`dropzone ${over ? 'over' : ''}`}
-              style={{ marginTop: 6 }}
+              className={cn('dropzone', over && 'over')}
               onClick={() => fileRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOver(true);
+              }}
               onDragLeave={() => setOver(false)}
               onDrop={(e) => {
                 e.preventDefault();
@@ -197,35 +227,58 @@ export function ComplaintCreatePage() {
                 queue(e.dataTransfer.files?.[0]);
               }}
             >
-              Click or drop a file here ({pending.length}/{MAX_FILES} queued)
+              <Paperclip className="text-text-subtle" size={24} />
+              <p className="text-sm font-medium m-0">Click or drop a file here</p>
+              <p className="text-xs text-text-muted m-0">
+                {pending.length}/{MAX_FILES} queued · upload starts after the complaint is saved
+              </p>
               <input
                 ref={fileRef}
                 type="file"
                 accept={ACCEPT_ATTR}
-                style={{ display: 'none' }}
-                onChange={(e) => { queue(e.target.files?.[0]); e.target.value = ''; }}
+                className="hidden"
+                onChange={(e) => {
+                  queue(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
               />
             </div>
           )}
           {pending.length > 0 && (
-            <ul style={{ marginTop: 8, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <ul className="space-y-2 mt-4 list-none p-0 m-0">
               {pending.map((f, i) => (
-                <li key={`${f.name}-${i}`} className="row" style={{
-                  background: 'var(--surface-2)', padding: '6px 10px', borderRadius: 'var(--radius)',
-                }}>
-                  <span style={{ flex: 1 }}>{f.name}</span>
-                  <span className="mono muted" style={{ fontSize: 12 }}>{(f.size / 1024).toFixed(1)} KB</span>
-                  <Button type="button" variant="ghost" onClick={() => removePending(i)}>Remove</Button>
+                <li
+                  key={`${f.name}-${i}`}
+                  className="flex items-center justify-between p-2 rounded-md text-xs"
+                  style={{ background: 'var(--success-bg)', border: '1px solid var(--success-border)' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Check size={14} className="text-success shrink-0" />
+                    <span className="font-medium truncate">{f.name}</span>
+                    <span className="font-mono text-text-muted">({(f.size / 1024).toFixed(1)} KB)</span>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="px-1 py-0.5 h-auto" onClick={() => removePending(i)}>
+                    <X size={14} />
+                  </Button>
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </Card>
 
-        <div className="row-end" style={{ marginTop: 12 }}>
-          <Button type="button" variant="secondary" onClick={() => nav('/complaints')}>Cancel</Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? 'Creating…' : 'Create complaint'}
+        {/* Sticky footer aligned with the workspace area (sidebar width is dynamic). */}
+        <div
+          className="fixed bottom-0 right-0 bg-surface border-t border-border p-4 flex justify-end gap-3 z-30"
+          style={{
+            left: 'var(--cts-sidebar-width, 240px)',
+            boxShadow: '0 -4px 10px rgb(0 0 0 / 0.02)',
+          }}
+        >
+          <Button type="button" variant="secondary" onClick={() => nav('/complaints')}>
+            Cancel
+          </Button>
+          <Button type="submit" icon={<Plus size={16} />} isLoading={busy}>
+            Create complaint
           </Button>
         </div>
       </form>
