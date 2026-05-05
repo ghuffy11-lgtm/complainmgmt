@@ -23,6 +23,13 @@ export class UserEntity {
   @Column({ name: 'display_name', type: 'text' })
   displayName!: string;
 
+  /**
+   * The user's "home" department, used by the scoped user dashboard. Nullable
+   * for admins / managers / users who legitimately span departments.
+   */
+  @Column({ name: 'department_id', type: 'bigint', nullable: true })
+  departmentId!: string | null;
+
   @Column({ name: 'password_hash', type: 'text' })
   passwordHash!: string;
 

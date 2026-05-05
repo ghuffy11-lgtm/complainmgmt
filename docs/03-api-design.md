@@ -68,13 +68,19 @@ Login is rate-limited (5/min/IP) and tracks `failed_login_count` per user; after
 
 ## Complaints
 
+> **Frozen states.** When `status ∈ {closed, resolved}`, every mutation
+> endpoint below — and attachment uploads/deletes — refuses with `409
+> COMPLAINT_FROZEN`. The only way to transition out is `PATCH .../status`
+> with the `complaint:reopen` permission, which emits a distinct
+> `action='reopen'` audit row.
+
 | Method | Path | Permission | Notes |
 |---|---|---|---|
-| GET | `/complaints` | `complaint:read` | filters: `status`, `priority`, `assignedTo`, `departmentId`, `q`, date range |
+| GET | `/complaints` | `complaint:read` | filters: `status`, `priority`, `assignedTo`, `departmentId`, `q`, `dateFrom` / `dateTo` (inclusive YYYY-MM-DD on `complaint_date`) |
 | GET | `/complaints/:id` | `complaint:read` | full record + dynamic values + attachments meta |
-| POST | `/complaints` | `complaint:create` | body validated against current dynamic field schema |
-| PATCH | `/complaints/:id` | `complaint:update` | partial update; per-field write permission checked |
-| PATCH | `/complaints/:id/status` | `complaint:update` | `{status}` |
+| POST | `/complaints` | `complaint:create` | body validated against current dynamic field schema. May include `departmentId` and `assignedTo` for **first-time** routing — `complaint:assign` is *not* required for the initial route (re-routing later does require it). May include `complaintDate` (YYYY-MM-DD) for backdating. |
+| PATCH | `/complaints/:id` | `complaint:update` | partial update; per-field write permission checked. May include `values` (dynamic fields) and/or `complaintDate` (string to set, `null` to clear). |
+| PATCH | `/complaints/:id/status` | `complaint:update` | `{status, note?}`. Transitioning out of `closed`/`resolved` additionally requires `complaint:reopen` and emits an audit row with `action='reopen'`. The optional `note` lands on the audit row. |
 | PATCH | `/complaints/:id/priority` | `complaint:update` | `{priority}` |
 | POST | `/complaints/:id/assign` | `complaint:assign` | `{departmentId, userId?, note?}` |
 | POST | `/complaints/:id/lock-override` | `complaint.field:<key>:override` | `{fieldKey, value, note}` (supervisor/admin) |
@@ -110,7 +116,9 @@ Server validates MIME via magic-byte sniffing; client-supplied `Content-Type` is
 
 | Method | Path | Permission | Notes |
 |---|---|---|---|
-| GET | `/audit` | `audit:read` | filters: `complaintId`, `actorId`, `from`, `to`, `fieldKey`, `action` |
+| GET | `/audit` | `audit:read` | filters: `complaintId`, `actorId`, `fieldKey`, `action`. Each row is enriched with `actorName`. |
+| GET | `/complaints/:id/audit` | `complaint:read` | per-complaint timeline, same enrichment. |
+| GET | `/complaints/:id/assignments` | `complaint:read` | history rows enriched with `oldAssignedToName`, `newAssignedToName`, `oldDepartmentName`, `newDepartmentName`, `changedByName`. |
 
 ## Dashboard
 
@@ -120,6 +128,9 @@ Server validates MIME via magic-byte sniffing; client-supplied `Content-Type` is
 | GET | `/dashboard/by-status` | `dashboard:read` |
 | GET | `/dashboard/by-priority` | `dashboard:read` |
 | GET | `/dashboard/by-department` | `dashboard:read` |
+| GET | `/dashboard/by-date?days=N` | `dashboard:read` | `N` clamped 1..365. Returns `{ days, data: [{ date, count }] }` for days with non-zero counts on `complaint_date`. Client zero-fills. |
+| GET | `/dashboard/aging` | `dashboard:read` | Open-complaint age buckets returned in fixed order: `[{ bucket, count }]` where bucket ∈ `0-1d`, `1-7d`, `7-30d`, `30d+`. Status ∈ {open, in_progress}. |
+| GET | `/dashboard/resolution-latency?days=N` | `dashboard:read` | `N` clamped 1..365. `{ count, avgHours, medianHours, p95Hours, perWeek: [{ week, count, avgHours }] }`. Latency derived from the audit log's `__status__` transitions, not `updated_at`. |
 
 ## Admin: system
 
@@ -136,6 +147,7 @@ Server validates MIME via magic-byte sniffing; client-supplied `Content-Type` is
 | `complaint:create` | ✔ | — | ✔ | ✔ |
 | `complaint:update` | ✔ | — | ✔ | ✔ (own, non-locked) |
 | `complaint:assign` | ✔ | ✔ | ✔ | — |
+| `complaint:reopen` | ✔ | — | — | — |
 | `complaint.field:*:write` | ✔ | — | ✔ | ✔ |
 | `complaint.field:*:override` | ✔ | — | ✔ | — |
 | `audit:read` | ✔ | ✔ | ✔ | — |

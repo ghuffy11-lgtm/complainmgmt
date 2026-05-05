@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UsersService } from '../../services/users.service';
 import { RolesService } from '../../services/roles.service';
+import { DepartmentsService } from '../../services/departments.service';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
-import type { Role, UserSummary } from '../../types/api';
+import type { Department, Role, UserSummary } from '../../types/api';
 
 export function AdminUsersPage() {
   const qc = useQueryClient();
@@ -16,6 +17,7 @@ export function AdminUsersPage() {
 
   const usersQ = useQuery({ queryKey: ['users'], queryFn: () => UsersService.list(1, 200) });
   const rolesQ = useQuery({ queryKey: ['roles'], queryFn: () => RolesService.list() });
+  const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<UserSummary | null>(null);
@@ -43,17 +45,21 @@ export function AdminUsersPage() {
         <table>
           <thead>
             <tr>
-              <th>Username</th><th>Display name</th><th>Email</th><th>Provider</th>
+              <th>Username</th><th>Display name</th><th>Email</th><th>Department</th>
               <th>Active</th><th>Last login</th><th></th>
             </tr>
           </thead>
           <tbody>
-            {usersQ.data.data.map((u) => (
+            {usersQ.data.data.map((u) => {
+              const deptName = u.departmentId
+                ? departmentsQ.data?.find((d) => d.id === u.departmentId)?.name
+                : null;
+              return (
               <tr key={u.id}>
                 <td className="mono">{u.username}</td>
                 <td>{u.displayName}</td>
                 <td className="mono muted">{u.email ?? '—'}</td>
-                <td className="mono">{u.authProvider}</td>
+                <td>{deptName ?? <span className="muted">—</span>}</td>
                 <td>{u.isActive
                   ? <span className="badge badge-success">active</span>
                   : <span className="badge">inactive</span>}</td>
@@ -70,7 +76,8 @@ export function AdminUsersPage() {
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -78,6 +85,7 @@ export function AdminUsersPage() {
       {creating && (
         <CreateUserModal
           roles={rolesQ.data ?? []}
+          departments={departmentsQ.data ?? []}
           onClose={() => setCreating(false)}
           onCreated={() => {
             qc.invalidateQueries({ queryKey: ['users'] });
@@ -89,6 +97,7 @@ export function AdminUsersPage() {
         <EditUserModal
           user={editing}
           roles={rolesQ.data ?? []}
+          departments={departmentsQ.data ?? []}
           onClose={() => setEditing(null)}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['users'] });
@@ -108,14 +117,15 @@ export function AdminUsersPage() {
 }
 
 function CreateUserModal({
-  roles, onClose, onCreated,
-}: { roles: Role[]; onClose: () => void; onCreated: () => void }) {
+  roles, departments, onClose, onCreated,
+}: { roles: Role[]; departments: Department[]; onClose: () => void; onCreated: () => void }) {
   const toast = useToast();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [departmentId, setDepartmentId] = useState('');
 
   const m = useMutation({
     mutationFn: () =>
@@ -123,6 +133,7 @@ function CreateUserModal({
         username, displayName,
         email: email || undefined,
         password, roleIds,
+        departmentId: departmentId || undefined,
       }),
     onSuccess: () => { toast.success('User created'); onCreated(); },
     onError: (err) => toast.error(errorMessage(err, 'Create failed')),
@@ -155,6 +166,17 @@ function CreateUserModal({
         <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
         <span className="hint">Min 10 chars. The user should change it on first login.</span>
       </div>
+      <div className="field"><label>Home department (optional)</label>
+        <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+          <option value="">— none —</option>
+          {departments.filter((d) => d.isActive).map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+        <span className="hint">
+          Used for the scoped user dashboard. Leave blank for admins/managers who span departments.
+        </span>
+      </div>
       <div className="field"><label>Roles</label>
         <RolePicker roles={roles} value={roleIds} onChange={setRoleIds} />
       </div>
@@ -163,16 +185,21 @@ function CreateUserModal({
 }
 
 function EditUserModal({
-  user, roles, onClose, onSaved,
-}: { user: UserSummary; roles: Role[]; onClose: () => void; onSaved: () => void }) {
+  user, roles, departments, onClose, onSaved,
+}: { user: UserSummary; roles: Role[]; departments: Department[]; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [email, setEmail] = useState(user.email ?? '');
+  const [departmentId, setDepartmentId] = useState(user.departmentId ?? '');
   const [roleIds, setRoleIds] = useState<string[]>([]);
 
   const updateM = useMutation({
     mutationFn: async () => {
-      await UsersService.update(user.id, { displayName, email: email || null });
+      await UsersService.update(user.id, {
+        displayName,
+        email: email || null,
+        departmentId: departmentId === '' ? null : departmentId,
+      });
       if (roleIds.length > 0) await UsersService.setRoles(user.id, roleIds);
     },
     onSuccess: () => { toast.success('Saved'); onSaved(); },
@@ -198,6 +225,15 @@ function EditUserModal({
       </div>
       <div className="field"><label>Email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </div>
+      <div className="field"><label>Home department</label>
+        <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+          <option value="">— none —</option>
+          {departments.filter((d) => d.isActive || d.id === user.departmentId).map((d) => (
+            <option key={d.id} value={d.id}>{d.name}{!d.isActive ? ' (inactive)' : ''}</option>
+          ))}
+        </select>
+        <span className="hint">Used for the scoped user dashboard.</span>
       </div>
       <div className="field"><label>Replace roles</label>
         <span className="hint">

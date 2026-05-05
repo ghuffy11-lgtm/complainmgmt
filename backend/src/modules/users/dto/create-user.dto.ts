@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateUserDto {
@@ -39,6 +40,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** "Home" department for the user — used by the scoped user dashboard. */
+  @IsOptional() @IsString()
+  departmentId?: string;
 }
 
 export class UpdateUserDto {
@@ -55,6 +60,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Update or clear the user's home department. `null` clears, omit keeps. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  departmentId?: string | null;
 }
 
 export class SetUserRolesDto {

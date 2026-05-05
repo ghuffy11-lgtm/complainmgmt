@@ -160,9 +160,10 @@ Dropdown values for `type='dropdown'`.
 | assigned_to | BIGINT FK users.id | nullable |
 | assigned_by | BIGINT FK users.id | nullable |
 | assigned_at | TIMESTAMPTZ | |
+| complaint_date | DATE | nullable. Operator-supplied event date — distinct from `created_at` (insertion timestamp). |
 | created_at, updated_at | TIMESTAMPTZ | |
 
-Indexes: `status`, `priority`, `assigned_department_id`, `assigned_to`, `created_at DESC`.
+Indexes: `status`, `priority`, `assigned_department_id`, `assigned_to`, `created_at DESC`, partial `complaint_date WHERE NOT NULL`.
 
 ### `complaint_field_values`
 

@@ -60,6 +60,7 @@ export class UsersController {
     email: u.email,
     isActive: u.isActive,
     authProvider: u.authProvider,
+    departmentId: u.departmentId,
     lastLoginAt: u.lastLoginAt,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,

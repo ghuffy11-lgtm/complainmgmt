@@ -62,6 +62,22 @@ Unchanged fields produce no audit row. A field that goes from value to null logs
 - **PII in audit** → audit rows can contain old/new values that include PII. Retention and access controls must treat the audit table at the same sensitivity as the source data.
 - **Storage growth** → 1 row per field change; for ~1 M complaints with avg 8 changes each = 8 M rows, comfortably handled by a single Postgres instance with the documented indexes. Partitioning by month is the roadmap path if growth exceeds projections.
 
+## Read-path enrichment
+
+Audit rows reference users and departments by id. The read endpoints
+(`/audit`, `/complaints/:id/audit`, `/complaints/:id/assignments`) enrich
+each row with display names via `DisplayNamesService` so the UI can render
+without N+1 follow-up queries. The enriched fields are:
+
+- `actorName` — `"Display Name (username)"`, or null if the actor is unknown
+  (system events or deleted users — the latter shouldn't happen because we
+  RESTRICT on user delete, but the resolver is null-safe).
+- For assignment history: `oldAssignedToName`, `newAssignedToName`,
+  `oldDepartmentName`, `newDepartmentName`, `changedByName`.
+
+The raw ids are still returned so downstream filters (e.g. "show me
+everything actor X did") keep working.
+
 ## Reusability notes
 
 - Every mutating service (complaints, assignments, settings) calls `AuditService.recordChange` exactly once per change. Adding a new mutating endpoint without an audit call should fail review.

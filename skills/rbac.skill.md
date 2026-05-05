@@ -69,6 +69,32 @@ Per-field permissions follow the dynamic field schema. When a field is created w
 
 When a field is deleted (only allowed for non-system fields), those permissions are deleted too. Roles that referenced them lose the entries automatically (FK cascade).
 
+### Create-time routing exception
+
+`complaint:assign` gates **re**assignment of an existing complaint. The
+*first-time* routing on create is open to any user with `complaint:create` —
+they can pick a department and (if they can list users) an assignee on the
+new-complaint form. Rationale: an employee filing a complaint should be able
+to direct it to the right department without an admin in the loop;
+re-routing later is the privileged action.
+
+The audit row + `complaint_assignment_history` entry are written under the
+creator's id either way, so attribution is preserved.
+
+### Frozen-state permission (`complaint:reopen`)
+
+When a complaint's status is `closed` or `resolved`, every mutation path
+refuses with `409 COMPLAINT_FROZEN` — including direct field edits,
+priority/department/assignment changes, and attachment uploads/deletes.
+
+`complaint:reopen` permits transitioning the status *out* of a frozen
+state. It is **not** a free pass: holders must reopen first, then edit,
+then re-close. Each step lands a distinct audit row (the reopen as
+`action='reopen'`, subsequent edits as `'update'`).
+
+The permission is seeded only on the `admin` role; admins can extend it to
+supervisor (or any custom role) via the permission grid.
+
 ### Owner-scoped permissions
 
 Some permissions are conditional on ownership (e.g. an employee can update their *own* complaints but not others). RBAC does not model ownership directly; the service layer enforces it after the permission check:

@@ -40,7 +40,7 @@ type AttachmentMeta = {
 ### Validation
 
 1. **MIME sniffing.** The server determines MIME from the bytes (`file-type` package), not from the client `Content-Type` header. The reported `mime_type` in DB is the sniffed value.
-2. **Allow-list.** Configurable via system settings. Default: `application/pdf`, `image/png`, `image/jpeg`, `image/webp`, `application/msword`, `application/vnd.openxmlformats-officedocument.*`, `text/plain`. Anything else → `415 UNSUPPORTED_MEDIA_TYPE`.
+2. **Allow-list.** Configurable via system settings. Default (migration `0012`): `application/pdf`, `image/png`, `image/jpeg`, `image/webp`. Other types → `415 MIME_NOT_ALLOWED`. Operators can broaden the list via Admin → Settings; the default is intentionally narrow because complaint attachments are evidence (photos, scanned letters, PDFs) and the inline viewer only renders these formats.
 3. **Filename sanitization.** Path components stripped, control chars removed, length capped at 200.
 4. **SHA-256** computed during read; stored as `BYTEA`. Useful for dedup and for detecting silent corruption later.
 
@@ -76,6 +76,40 @@ Upload and delete each emit an audit row with `field_key='__attachment__'`, `act
 - **Long filenames / unicode** — sanitization keeps the basename only and truncates to 200 chars (NFC normalize first).
 - **Large body size attack** — NGINX rejects bodies above the cap before they hit the backend.
 - **Sha collision** — not a security concern at our scale (we don't dedupe at write time; sha is for integrity).
+
+## Create-time attachments (UI flow)
+
+The complaint create form lets operators queue attachments before saving.
+Files are *not* posted as part of the create body — that would require a
+multipart create endpoint and an atomic insert path. Instead:
+
+```
+1. POST /complaints                      → returns the new complaint id
+2. for each queued file:
+     POST /complaints/<id>/attachments
+3. Navigate to the detail page
+```
+
+If the complaint creates successfully but a per-file upload fails (typically
+a server-side MIME sniff that disagrees with the file's extension), the
+client surfaces a warning toast naming the failures and navigates to the
+detail page anyway — the user retries from the AttachmentsPanel. This is
+"warning-and-continue": acceptable for the typical hospital workflow because
+the user is right there to fix the rejected file, and atomic create+upload
+would force a much bigger backend change (multipart create endpoint,
+streaming MIME sniff during create-time validation, etc.).
+
+## Inline viewer
+
+The list now opens an `AttachmentViewer` modal on filename click. It uses
+the same auth-aware blob-fetch path as download, then renders:
+
+- `image/*` → `<img>` (max 70vh)
+- `application/pdf` → `<embed>` (browsers render natively)
+- anything else → "Preview unavailable" message + Download button
+
+Because the system allow-list is narrowed to image+PDF, the third branch is
+defence-in-depth — it only triggers if an operator broadened the policy.
 
 ## Reusability notes
 

@@ -169,3 +169,79 @@ Format: `[STATUS] ID — Title (Epic) — owner` followed by an outcome descript
 - [TODO]   T-130 — `INotificationTransport` interface + null impl (E14)
 - [TODO]   T-131 — `IAttachmentStore` interface (E14, done as part of T-071)
 - [TODO]   T-132 — `IAuthProvider` interface (E14, done as part of T-007)
+
+## E15 — Post-1.0 UX feedback (in-flight user testing)
+
+Real-world findings during the first hands-on session. Tracked in batches.
+
+### Batch A — display names + friendly activity + create-time routing
+
+- [DONE]   T-200 — Loosen create-time RBAC so any `complaint:create` user can route a new complaint (E15)
+  *`complaint:assign` now gates *re*assignment only. Audit + history still record the actor. See `skills/rbac.skill.md` § "Create-time routing exception".*
+- [DONE]   T-201 — `DisplayNamesService` + audit/history enrichment (E15)
+  *Global module batch-resolves user/department ids to "DisplayName (username)" / dept name. Eliminates N+1 lookups; adds `actorName`, `oldAssignedToName`, `newAssignedToName`, `oldDepartmentName`, `newDepartmentName`, `changedByName` on the read endpoints.*
+- [DONE]   T-202 — Friendly activity timeline (E15)
+  *`AuditTimeline` rewritten: each row is a one-line sentence ("Created complaint CMP-2026-…", "Changed status: open → in_progress", "Override on locked field 'Patient Complaint'") with relative timestamps and a "Details" expander for the raw old/new payload. Uses `fieldsByKey` to resolve dynamic-field labels.*
+
+### Batch B — `complaint_date` as a first-class column
+
+- [DONE]   T-210 — Migration: add `complaints.complaint_date DATE` (nullable for legacy rows) (E15)
+  *Migration `0010_complaint_date.sql`. Partial index `idx_complaints_complaint_date WHERE complaint_date IS NOT NULL` so range filters are efficient without bloating the index for unset rows.*
+- [DONE]   T-211 — DTO + service: accept on create + update + emit audit (E15)
+  *`CreateComplaintDto.complaintDate` (YYYY-MM-DD, validated by `@Matches`). `UpdateComplaintDto.complaintDate` accepts string | null (null clears). `update()` runs the date branch in the same pessimistic-locked transaction as field-value writes and emits `action='update'` with synthetic `field_key='__complaint_date__'`.*
+- [DONE]   T-212 — UI: date picker on create + detail; replace "Created" column on the list with "Complaint Date" (E15)
+  *Create form defaults to today + caps at today (no future-dating). Detail page edits inline via `complaintDateM`. List column "Complaint date" replaces "Created"; null dates render as — with a tooltip exposing the system creation timestamp.*
+- [DONE]   T-213 — List filter: date range (E15)
+  *`GET /complaints` accepts `dateFrom`/`dateTo` (YYYY-MM-DD, inclusive). Two date inputs in the list toolbar. Rows with null `complaint_date` never match a range filter — intentional.*
+- [DONE]   T-214 — Dashboard: time-series chart over `complaint_date` (E15)
+  *New `GET /dashboard/by-date?days=N` (clamped 1..365). Inline SVG line+area chart on the dashboard with 30 / 90 / 365 day windows; client zero-fills missing days. Will be replaced with recharts in Batch E.*
+
+### Batch C — closed/resolved state freeze
+
+- [DONE]   T-220 — Add `complaint:reopen` permission (seeded for admin) (E15)
+  *Migration `0011_complaint_reopen.sql` inserts the permission and grants it to the `admin` role only. Operators can extend to supervisor (or any other) via the role-grid editor — the migration is idempotent on rerun.*
+- [DONE]   T-221 — Service: refuse mutations on closed/resolved unless caller has `complaint:reopen` (E15)
+  *`complaint-freeze.ts` exposes `assertEditable` (refuses with 409 `COMPLAINT_FROZEN`) and `classifyStatusTransition` (returns `noop`/`reopen`/`update`, throws 409 `RBAC_DENIED_REOPEN` if the caller lacks the permission). Wired into `ComplaintsService.update/setPriority/assign` and `AttachmentsService.upload/remove`. Reopen is a *status-transition* permission — holders can't bypass the freeze and edit fields directly; they must reopen first.*
+- [DONE]   T-222 — UI: lock indicator on detail page; "Reopen" button for users with the permission (E15)
+  *Yellow "🔒 read-only" banner on closed/resolved detail pages. Status/priority/complaint-date/department selects all disabled. A "Reopen…" button appears only for users with `complaint:reopen`; opens `ReopenDialog` (target status picker + optional note that lands on the audit row).*
+- [DONE]   T-223 — Audit: distinct `reopen` action so timeline calls it out (E15)
+  *Migration `0011` extends the `complaint_audit_log.action` CHECK to include `reopen`. `setStatus` emits `action='reopen'` (vs `'update'`) when the previous status was frozen and the new one differs. Timeline renders "Reopened: closed → open" with a danger-color dot.*
+
+### Batch D — attachments UX (image + PDF only)
+
+- [DONE]   T-230 — Stage attachments in the create form, upload after the complaint id is returned (E15)
+  *Create form has a drag-drop queue (≤3 files, each ≤2MB, image/PDF only via `accept` attr). On submit: POST /complaints → for-each upload → navigate. Warning-and-continue on per-file failure (named in the toast); the complaint still lands. Atomic create+upload was considered and rejected — needs a multipart create endpoint, see `skills/file-upload.skill.md` for the design note.*
+- [DONE]   T-231 — Attachment viewer modal (image inline, PDF via `<embed>`) (E15)
+  *`AttachmentViewer` modal: filename click opens it. Images via `<img>` (max 70vh), PDFs via `<embed>` (~70vh). Auth-aware blob fetch; URL revoked on close. Separate "Download" button on each row stays for direct-download workflows. "Preview unavailable" branch is defence-in-depth for operators who broaden the allow-list.*
+- [DONE]   T-232 — System allow-list narrowed to image + PDF (E15)
+  *Migration `0012_attachments_image_pdf_only.sql` UPDATEs `system_settings.attachments.allowed_mime_types`; `AttachmentsService.DEFAULT_ALLOWED_MIME` mirrors. Operators may still broaden via Admin → Settings — not a hardcoded ceiling.*
+
+### Batch E — dashboard polish
+
+- [DONE]   T-240 — Add `recharts`; replace inline-SVG viz with real charts (E15)
+  *`recharts ^2.12` added. AreaChart for trend, PieChart for status, BarChart for priority/department/aging, dual-axis BarChart for resolution latency. Colour mapping per enum so the same value reads consistently across panels.*
+- [DONE]   T-241 — Manager-grade dashboard: trend, open critical, resolution latency, aging (E15)
+  *Two new endpoints:
+    * `GET /dashboard/aging` — buckets `0-1d / 1-7d / 7-30d / 30d+` over status ∈ {open, in_progress}, returned in fixed order;
+    * `GET /dashboard/resolution-latency?days=N` — count + avg/median/p95 (linear-interpolated, hours) + per-week histogram of resolutions. Latency is derived from the audit log's `__status__` transition rows, so it's accurate even if `complaints.updated_at` was bumped by an unrelated edit.
+   `summary` extended with `open`. Dashboard restructured: KPI strip · trend (with 30/90/365 toggle) · status-pie + priority-bar · department-bar (horizontal) + aging-bar · resolution-latency stats + per-week dual-axis chart.*
+
+### Batch F — theme refresh
+
+- [DONE]   T-250 — Visual refresh: palette, typography, spacing, hover/focus states across the app (E15)
+  *Refined CSS design tokens — slate-tuned palette, 8-level type scale, 3-tier elevation, motion tokens, consistent focus ring; preserved every existing variable name so inline-style call-sites kept working. Branded sidebar with gradient mark, inline-SVG icons, active-state left accent, user block at the bottom. Polished login (gradient backdrop + brand mark). `Button` primitive rewritten with hover/active/focus/disabled transitions and an `icon` prop. New `Skeleton` loader, used on the complaints list. Modal + toast got subtle entrance animations. `prefers-reduced-motion` respected. New `Icons.tsx` (~16 hand-rolled inline SVGs, no icon-library dependency).*
+
+## E16 — Round-2 UX feedback (post-Batch-F testing)
+
+- [DONE]   T-300 — Roles editor pre-populates current grants (E16)
+  *New `GET /roles/:id/permissions`. RoleEditor loads on selection, pre-checks granted perms, shows a "unsaved changes" hint, disables Save until dirty. Fixes the "select one perm, all others wiped" bug — and incidentally restored the seeded grants that earlier testing had mangled.*
+- [DONE]   T-301 — Attachment delete: only owner OR `complaint.attachment:delete_any` (E16)
+  *New permission seeded for admin + supervisor (migration `0013`). Old rule (owner OR `complaint:update`) let any employee wipe another employee's evidence.*
+- [DONE]   T-302 — Confirmed supervisor field-unlock works via `complaint.field:*:override` (E16)
+  *Already in the seed; the user couldn't see it because of T-300. Documented in `skills/rbac.skill.md` § Frozen-state permission and verified via DB query.*
+- [DONE]   T-310 — Dashboard click-throughs (E16)
+  *KPI cards link to filtered `/complaints` views; pie + bar legends become click-through lists. Complaints list reads filters from the URL, so `?status=open&priority=critical` lands on a pre-filtered view.*
+- [DONE]   T-320 — `users.department_id` + scoped user dashboard (E16)
+  *Migration `0014`: adds `users.department_id` (nullable FK) and `dashboard.own:read` permission (seeded for supervisor + employee). All `/dashboard/*` endpoints accept optional `?departmentId=…`; the server forces it to the caller's home department for scoped-only users. Frontend renders a slimmer "user dashboard" (status, priority, aging, trend — no resolution latency or by-department) for users without `dashboard:read`. Admin user form gets a "Home department" picker, list shows the column.*
+- [DONE]   T-330 — Theme spec for Lovable AI handover (E16)
+  *`docs/09-theme-spec-for-lovable.md` — self-contained markdown the user can paste into Lovable. Covers product context, tone, brand identity, all 10 screens with pattern requirements, hard constraints (CSS variable + class name preservation, route paths, permission-gated controls), density principles, and iconography rules.*

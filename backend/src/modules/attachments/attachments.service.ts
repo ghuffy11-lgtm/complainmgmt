@@ -17,21 +17,24 @@ import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../auth/auth-user.type';
 import { AppConfig } from '../../config/configuration';
 import { DbAttachmentStore } from './db-attachment-store';
+import { assertEditable } from '../complaints/complaint-freeze';
 import {
   isMimeAllowed,
   sanitizeFilename,
   sniffMime,
 } from './file-validation';
 
+/**
+ * Fallback when `system_settings.attachments.allowed_mime_types` is missing
+ * (fresh dev DB, partial restore, etc.). Mirrors the seed in migration 0012.
+ * Intentionally narrow: complaint attachments are evidence — photos and PDFs
+ * only. Operators can broaden via Admin → Settings if needed.
+ */
 const DEFAULT_ALLOWED_MIME = [
   'application/pdf',
   'image/png',
   'image/jpeg',
   'image/webp',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/plain',
 ];
 
 export type AttachmentMeta = {
@@ -101,6 +104,7 @@ export class AttachmentsService {
         .where('c.id = :id', { id: complaintId })
         .getOne();
       if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      assertEditable(complaint, actor);
 
       const count = await em.getRepository(AttachmentEntity).count({ where: { complaintId } });
       if (count >= this.maxFiles) {
@@ -148,16 +152,30 @@ export class AttachmentsService {
 
   async remove(complaintId: string, attachmentId: string, actor: AuthUser): Promise<void> {
     return this.dataSource.transaction(async (em) => {
+      const complaint = await em.getRepository(ComplaintEntity)
+        .findOne({ where: { id: complaintId } });
+      if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      assertEditable(complaint, actor);
+
       const row = await em
         .getRepository(AttachmentEntity)
         .findOne({ where: { id: attachmentId, complaintId } });
       if (!row) throw new NotFoundException({ code: 'ATTACHMENT_NOT_FOUND' });
 
-      // Owner can delete their own; otherwise the caller must hold complaint:update.
+      // Owner can delete their own; deleting *other people's* attachments
+      // requires the explicit `complaint.attachment:delete_any` permission
+      // (seeded for admin + supervisor in migration 0013).
+      //
+      // Previously this checked `complaint:update`, which the employee role
+      // also holds — letting any employee wipe another employee's evidence.
+      // Real bug surfaced during user testing; locked in by this rule.
       const isOwner = String(row.uploadedBy) === String(actor.id);
-      const canManage = actor.permissions.has('complaint:update');
-      if (!isOwner && !canManage) {
-        throw new ForbiddenException({ code: 'RBAC_DENIED' });
+      const canDeleteAny = actor.permissions.has('complaint.attachment:delete_any');
+      if (!isOwner && !canDeleteAny) {
+        throw new ForbiddenException({
+          code: 'RBAC_DENIED',
+          missing: ['complaint.attachment:delete_any'],
+        });
       }
 
       await em.getRepository(AttachmentEntity).delete({ id: row.id });

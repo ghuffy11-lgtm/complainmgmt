@@ -59,6 +59,7 @@ export class UsersService {
         passwordHash,
         isActive: dto.isActive ?? true,
         authProvider: 'local',
+        departmentId: dto.departmentId ?? null,
       }),
     );
     if (dto.roleIds?.length) {

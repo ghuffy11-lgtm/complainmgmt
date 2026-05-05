@@ -14,6 +14,13 @@ export const RolesService = {
   remove(id: string) {
     return api.delete(`/roles/${id}`).then(() => undefined);
   },
+  /** Permission IDs currently granted to the role — used by the editor
+   *  to pre-populate the grid. */
+  getPermissionIds(id: string) {
+    return api
+      .get<{ permissionIds: string[] }>(`/roles/${id}/permissions`)
+      .then((r) => r.data.permissionIds);
+  },
   setPermissions(id: string, permissionIds: string[]) {
     return api.post(`/roles/${id}/permissions`, { permissionIds }).then(() => undefined);
   },

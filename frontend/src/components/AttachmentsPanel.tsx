@@ -4,10 +4,14 @@ import { ComplaintsService } from '../services/complaints.service';
 import { Button } from './ui/Button';
 import { errorMessage, useToast } from './ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
+import { AttachmentViewer } from './AttachmentViewer';
+import {
+  ACCEPT_ATTR,
+  ALLOWED_MIME_LABEL,
+  MAX_FILES,
+  validateAttachmentFile,
+} from './attachment-policy';
 import type { AttachmentMeta } from '../types/api';
-
-const MAX_BYTES = 2 * 1024 * 1024;
-const MAX_FILES = 3;
 
 type Props = { complaintId: string };
 
@@ -16,6 +20,7 @@ export function AttachmentsPanel({ complaintId }: Props) {
   const toast = useToast();
   const { has, user } = usePermissions();
   const [over, setOver] = useState(false);
+  const [viewing, setViewing] = useState<AttachmentMeta | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const listQ = useQuery({
@@ -45,12 +50,9 @@ export function AttachmentsPanel({ complaintId }: Props) {
 
   const accept = (file: File | null | undefined) => {
     if (!file) return;
-    if (file.size > MAX_BYTES) {
-      toast.error(`File too large (max 2 MB).`);
-      return;
-    }
-    if ((listQ.data?.length ?? 0) >= MAX_FILES) {
-      toast.error(`Cap reached (${MAX_FILES} files per complaint).`);
+    const err = validateAttachmentFile(file, listQ.data?.length ?? 0);
+    if (err) {
+      toast.error(err);
       return;
     }
     uploadM.mutate(file);
@@ -73,14 +75,17 @@ export function AttachmentsPanel({ complaintId }: Props) {
     }
   };
 
+  // Owner can always delete their own; deleting other people's needs the
+  // explicit `complaint.attachment:delete_any` permission (seeded for admin
+  // + supervisor). The backend enforces the same rule.
   const canDelete = (att: AttachmentMeta) =>
-    has('complaint:update') || String(att.uploadedBy) === String(user?.id);
+    String(att.uploadedBy) === String(user?.id) || has('complaint.attachment:delete_any');
 
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Attachments</h3>
       <p className="muted" style={{ marginTop: 0 }}>
-        Up to {MAX_FILES} files · max 2 MB each. MIME is verified on the server.
+        Up to {MAX_FILES} files · max 2 MB each · {ALLOWED_MIME_LABEL}.
       </p>
 
       {canUpload && (
@@ -99,6 +104,7 @@ export function AttachmentsPanel({ complaintId }: Props) {
           <input
             ref={fileRef}
             type="file"
+            accept={ACCEPT_ATTR}
             style={{ display: 'none' }}
             onChange={(e) => { accept(e.target.files?.[0]); e.target.value = ''; }}
           />
@@ -117,14 +123,16 @@ export function AttachmentsPanel({ complaintId }: Props) {
               <tr key={a.id}>
                 <td>
                   <button
-                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0 }}
-                    onClick={() => download(a)}
+                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                    onClick={() => setViewing(a)}
+                    title="Click to preview"
                   >{a.filename}</button>
                 </td>
                 <td className="mono muted">{a.mimeType}</td>
                 <td className="mono">{(a.byteSize / 1024).toFixed(1)} KB</td>
                 <td className="mono muted">{new Date(a.uploadedAt).toLocaleString()}</td>
                 <td className="right">
+                  <Button variant="ghost" onClick={() => download(a)}>Download</Button>
                   {canDelete(a) && (
                     <Button
                       variant="ghost"
@@ -139,6 +147,13 @@ export function AttachmentsPanel({ complaintId }: Props) {
           </tbody>
         </table>
       )}
+
+      <AttachmentViewer
+        open={!!viewing}
+        attachment={viewing}
+        complaintId={complaintId}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 }

@@ -15,10 +15,16 @@ export const UsersService = {
     password: string;
     isActive?: boolean;
     roleIds?: string[];
+    departmentId?: string;
   }) {
     return api.post<UserSummary>('/users', body).then((r) => r.data);
   },
-  update(id: string, body: { displayName?: string; email?: string | null; isActive?: boolean }) {
+  update(id: string, body: {
+    displayName?: string;
+    email?: string | null;
+    isActive?: boolean;
+    departmentId?: string | null;
+  }) {
     return api.patch<UserSummary>(`/users/${id}`, body).then((r) => r.data);
   },
   setRoles(id: string, roleIds: string[]) {

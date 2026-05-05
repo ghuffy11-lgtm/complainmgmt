@@ -20,6 +20,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { DisplayNamesModule } from './modules/display-names/display-names.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     DashboardModule,
     AdminModule,
     NotificationsModule,
+    DisplayNamesModule,
   ],
   controllers: [HealthController],
 })

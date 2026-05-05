@@ -39,6 +39,7 @@ export class PermissionsService {
       id: Number(user.id),
       username: user.username,
       displayName: user.displayName,
+      departmentId: user.departmentId,
       roleKeys: Array.from(roleKeys),
       permissions,
     };

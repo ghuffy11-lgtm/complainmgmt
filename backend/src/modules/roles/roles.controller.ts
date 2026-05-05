@@ -33,6 +33,17 @@ export class RolesController {
     await this.roles.remove(id);
   }
 
+  /**
+   * The permission IDs currently granted to a role. The role editor calls
+   * this on selection so the grid can pre-populate — without it, admins
+   * see an empty grid and accidentally wipe existing grants on save.
+   */
+  @Get(':id/permissions')
+  @RequirePermissions('admin.roles:read')
+  async getPermissions(@Param('id') id: string): Promise<{ permissionIds: string[] }> {
+    return { permissionIds: await this.roles.getPermissionIds(id) };
+  }
+
   @Post(':id/permissions')
   @RequirePermissions('admin.roles:manage')
   @HttpCode(204)

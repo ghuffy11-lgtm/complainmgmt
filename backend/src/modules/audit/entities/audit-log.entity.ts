@@ -10,7 +10,8 @@ export type AuditAction =
   | 'attachment.removed'
   | 'password_reset_by_admin'
   | 'role_permissions_changed'
-  | 'settings_changed';
+  | 'settings_changed'
+  | 'reopen';
 
 @Entity({ name: 'complaint_audit_log' })
 export class AuditLogEntity {

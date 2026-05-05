@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -22,6 +23,7 @@ import { ReferenceNumberService } from './reference-number.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { hasPermission } from '../permissions/permission-resolver';
 import { CreateComplaintDto, UpdateComplaintDto } from './dto/complaint.dto';
+import { assertEditable, classifyStatusTransition } from './complaint-freeze';
 
 type ListFilters = {
   page: number;
@@ -31,6 +33,10 @@ type ListFilters = {
   assignedTo?: string;
   departmentId?: string;
   q?: string;
+  /** Inclusive lower bound on complaint_date (YYYY-MM-DD). */
+  dateFrom?: string;
+  /** Inclusive upper bound on complaint_date (YYYY-MM-DD). */
+  dateTo?: string;
 };
 
 @Injectable()
@@ -53,6 +59,8 @@ export class ComplaintsService {
     if (filters.assignedTo) qb.andWhere('c.assigned_to = :assignedTo', { assignedTo: filters.assignedTo });
     if (filters.departmentId) qb.andWhere('c.assigned_department_id = :dept', { dept: filters.departmentId });
     if (filters.q) qb.andWhere('c.reference_no ILIKE :q', { q: `%${filters.q}%` });
+    if (filters.dateFrom) qb.andWhere('c.complaint_date >= :dateFrom', { dateFrom: filters.dateFrom });
+    if (filters.dateTo) qb.andWhere('c.complaint_date <= :dateTo', { dateTo: filters.dateTo });
     qb.skip((filters.page - 1) * filters.pageSize).take(filters.pageSize);
     const [data, total] = await qb.getManyAndCount();
     return { data, total };
@@ -88,6 +96,7 @@ export class ComplaintsService {
           status: 'open',
           priority: dto.priority ?? 'normal',
           createdBy: String(actor.id),
+          complaintDate: dto.complaintDate ?? null,
         }),
       );
 
@@ -106,15 +115,22 @@ export class ComplaintsService {
         fieldKey: null,
         action: 'create',
         oldValue: null,
-        newValue: { referenceNo, priority: complaint.priority, valueKeys: Object.keys(validation.coerced) },
+        newValue: {
+          referenceNo,
+          priority: complaint.priority,
+          complaintDate: complaint.complaintDate,
+          valueKeys: Object.keys(validation.coerced),
+        },
         actorId: String(actor.id),
       });
 
       // Optional initial assignment.
+      //
+      // Anyone allowed to create a complaint may also route it on the same
+      // submission — `complaint:assign` gates *re*assignment, not the
+      // first-time routing. The audit row + assignment_history entry written
+      // by AssignmentsService.apply() preserve who did it.
       if (dto.departmentId || dto.assignedTo) {
-        if (!hasPermission(actor.permissions, 'complaint:assign')) {
-          throw new ForbiddenException({ code: 'RBAC_DENIED', missing: ['complaint:assign'] });
-        }
         await this.assignments.apply(
           em,
           complaint,
@@ -133,14 +149,19 @@ export class ComplaintsService {
     });
   }
 
-  // ─── update (dynamic field values) ─────────────────────────────────────
+  // ─── update (dynamic field values + complaint_date) ───────────────────
   async update(id: string, dto: UpdateComplaintDto, actor: AuthUser) {
-    if (!dto.values || Object.keys(dto.values).length === 0) {
+    const hasValuesPatch = !!dto.values && Object.keys(dto.values).length > 0;
+    const hasDatePatch = Object.prototype.hasOwnProperty.call(dto, 'complaintDate');
+    if (!hasValuesPatch && !hasDatePatch) {
       return this.detail(id, actor);
     }
+
     const fieldByKey = await this.fields.fullSchemaMap();
     const schemaArr = [...fieldByKey.values()];
-    const validation = validateValues(dto.values, schemaArr, { allowPartial: true });
+    const validation = hasValuesPatch
+      ? validateValues(dto.values!, schemaArr, { allowPartial: true })
+      : { ok: true, errors: {}, coerced: {} as ReturnType<typeof validateValues>['coerced'] };
     if (!validation.ok) {
       throw new BadRequestException({ code: 'VALIDATION_FAILED', errors: validation.errors });
     }
@@ -155,6 +176,32 @@ export class ComplaintsService {
         .where('c.id = :id', { id })
         .getOne();
       if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+
+      // Closed/resolved complaints are read-only — even for users who can
+      // reopen them. The reopen permission is a status-transition gate, not
+      // a free pass to edit. Forces the workflow: reopen → edit → reclose.
+      assertEditable(complaint, actor);
+
+      // ─── complaint_date branch ────────────────────────────────────────
+      // Treated as a first-class scalar column (analogous to status/priority),
+      // not a dynamic field. Anyone with `complaint:update` may set/clear it.
+      if (hasDatePatch) {
+        const oldDate = complaint.complaintDate;
+        const newDate = dto.complaintDate ?? null;
+        if (oldDate !== newDate) {
+          complaint.complaintDate = newDate;
+          await em.getRepository(ComplaintEntity).save(complaint);
+          await this.audit.recordChange({
+            em,
+            complaintId: id,
+            fieldKey: '__complaint_date__',
+            action: 'update',
+            oldValue: oldDate,
+            newValue: newDate,
+            actorId: String(actor.id),
+          });
+        }
+      }
 
       const existingByFieldId = new Map(
         (await em.getRepository(ComplaintFieldValueEntity).find({ where: { complaintId: id } })).map((v) => [
@@ -234,13 +281,25 @@ export class ComplaintsService {
   }
 
   // ─── status / priority ─────────────────────────────────────────────────
-  async setStatus(id: string, status: ComplaintStatus, actor: AuthUser) {
+  async setStatus(id: string, status: ComplaintStatus, actor: AuthUser, note?: string) {
     return this.scalarChange(id, '__status__', actor, async (em, c) => {
+      const transition = classifyStatusTransition(c.status, status, actor);
+      if (transition.kind === 'noop') return null;
+
       const old = c.status;
-      if (old === status) return null;
       c.status = status;
       await em.getRepository(ComplaintEntity).save(c);
-      return { old, next: status };
+
+      // Emit a distinct `reopen` audit row when the previous status was
+      // frozen and the actor used `complaint:reopen` to transition out.
+      // Optional note (UI prompts for one) lands on the audit row's `note`
+      // column for historical context.
+      return {
+        old,
+        next: status,
+        action: transition.kind === 'reopen' ? ('reopen' as const) : ('update' as const),
+        note,
+      };
     });
   }
 
@@ -257,6 +316,7 @@ export class ComplaintsService {
         .where('c.id = :id', { id })
         .getOne();
       if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      assertEditable(c, actor);
       await this.assignments.apply(em, c, input, actor);
     });
     // detail() reads via the global repo and must run AFTER the transaction
@@ -266,6 +326,8 @@ export class ComplaintsService {
 
   async setPriority(id: string, priority: ComplaintPriority, actor: AuthUser) {
     return this.scalarChange(id, '__priority__', actor, async (em, c) => {
+      // Priority changes count as edits — refused on frozen complaints.
+      assertEditable(c, actor);
       const old = c.priority;
       if (old === priority) return null;
       c.priority = priority;
@@ -278,10 +340,19 @@ export class ComplaintsService {
     id: string,
     fieldKey: '__status__' | '__priority__',
     actor: AuthUser,
-    work: (em: EntityManager, c: ComplaintEntity) => Promise<{ old: string; next: string } | null>,
+    work: (
+      em: EntityManager,
+      c: ComplaintEntity,
+    ) => Promise<{ old: string; next: string; action?: 'update' | 'reopen'; note?: string } | null>,
   ) {
     await this.dataSource.transaction(async (em) => {
-      const c = await em.getRepository(ComplaintEntity).findOne({ where: { id } });
+      // Lock the parent row so the freeze + transition checks see committed state.
+      const c = await em
+        .getRepository(ComplaintEntity)
+        .createQueryBuilder('c')
+        .setLock('pessimistic_write')
+        .where('c.id = :id', { id })
+        .getOne();
       if (!c) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
       const change = await work(em, c);
       if (change) {
@@ -289,10 +360,11 @@ export class ComplaintsService {
           em,
           complaintId: id,
           fieldKey,
-          action: 'update',
+          action: change.action ?? 'update',
           oldValue: change.old,
           newValue: change.next,
           actorId: String(actor.id),
+          note: change.note,
         });
       }
     });
@@ -380,6 +452,7 @@ export class ComplaintsService {
       assignedTo: c.assignedTo,
       assignedBy: c.assignedBy,
       assignedAt: c.assignedAt,
+      complaintDate: c.complaintDate,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       values: valuesOut,

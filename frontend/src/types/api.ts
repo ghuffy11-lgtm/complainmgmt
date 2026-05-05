@@ -2,6 +2,8 @@ export type Me = {
   id: number;
   username: string;
   displayName: string;
+  /** Home department; null when not assigned. Used by the user dashboard scope. */
+  departmentId: string | null;
   roleKeys: string[];
   permissions: string[];
 };
@@ -55,6 +57,8 @@ export type Complaint = {
   assignedTo: string | null;
   assignedBy: string | null;
   assignedAt: string | null;
+  /** Operator-supplied event date (YYYY-MM-DD), null until first set. */
+  complaintDate: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -84,6 +88,8 @@ export type AuditEntry = {
   oldValue: unknown;
   newValue: unknown;
   actorId: string | null;
+  /** Server-resolved, e.g. "Administrator (admin)". null when actor is unknown. */
+  actorName: string | null;
   occurredAt: string;
   note: string | null;
 };
@@ -98,6 +104,12 @@ export type AssignmentHistoryEntry = {
   changedBy: string;
   changedAt: string;
   note: string | null;
+  // Server-resolved display strings; null when the underlying id is null.
+  oldAssignedToName: string | null;
+  newAssignedToName: string | null;
+  oldDepartmentName: string | null;
+  newDepartmentName: string | null;
+  changedByName: string | null;
 };
 
 // ─── Users / Roles / Permissions / Departments ────────────────────────────
@@ -108,6 +120,7 @@ export type UserSummary = {
   email: string | null;
   isActive: boolean;
   authProvider: 'local' | 'ldap';
+  departmentId: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;

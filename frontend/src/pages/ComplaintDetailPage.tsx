@@ -6,6 +6,7 @@ import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { DepartmentsService } from '../services/departments.service';
 import { DynamicFieldRenderer } from '../components/DynamicFieldRenderer';
 import { AssignmentDialog } from '../components/AssignmentDialog';
+import { ReopenDialog } from '../components/ReopenDialog';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { AuditTimeline } from '../components/AuditTimeline';
 import { Button } from '../components/ui/Button';
@@ -46,6 +47,7 @@ export function ComplaintDetailPage() {
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [assignOpen, setAssignOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
 
   useEffect(() => {
     if (complaintQ.data) setDraft({ ...complaintQ.data.values });
@@ -99,13 +101,30 @@ export function ComplaintDetailPage() {
     onError: (err) => toast.error(errorMessage(err)),
   });
 
+  // Inline edit of complaint_date — null clears, string sets.
+  const complaintDateM = useMutation({
+    mutationFn: (next: string | null) => ComplaintsService.update(id, { complaintDate: next }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['complaint', id] });
+      qc.invalidateQueries({ queryKey: ['complaint', id, 'audit'] });
+      qc.invalidateQueries({ queryKey: ['complaints'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Could not save complaint date')),
+  });
+
   if (!id) return <p>Missing complaint id.</p>;
   if (complaintQ.isLoading || fieldsQ.isLoading) return <p className="muted">Loading…</p>;
   if (!complaintQ.data) return <p>Complaint not found.</p>;
 
   const c = complaintQ.data;
-  const canEdit = has('complaint:update');
-  const canAssign = has('complaint:assign');
+  // Closed/resolved complaints are read-only. Reopening requires
+  // `complaint:reopen` (which the backend also enforces). Both controls below
+  // gate on `editable` so the UI matches what the API will let through.
+  const isFrozen = c.status === 'closed' || c.status === 'resolved';
+  const canEdit = has('complaint:update') && !isFrozen;
+  const canAssign = has('complaint:assign') && !isFrozen;
+  const canReopen = isFrozen && has('complaint:reopen');
   const canSeeUsers = has('admin.users:read');
   const deptName = (id: string | null) => departmentsQ.data?.find((d) => d.id === id)?.name ?? (id ? `#${id}` : '—');
 
@@ -130,7 +149,25 @@ export function ComplaintDetailPage() {
         <PriorityBadge priority={c.priority} />
         <span className="spacer" />
         {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Assign…</Button>}
+        {canReopen && <Button variant="danger" onClick={() => setReopenOpen(true)}>Reopen…</Button>}
       </div>
+
+      {isFrozen && (
+        <div className="card" style={{
+          background: '#fffbeb', borderColor: '#fde68a',
+          marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center',
+        }}>
+          <span style={{ fontSize: 20 }}>🔒</span>
+          <div>
+            <strong>This complaint is {c.status === 'closed' ? 'closed' : 'resolved'} — read-only.</strong>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              {canReopen
+                ? 'Use Reopen to make changes; the action is recorded in the activity timeline.'
+                : 'Ask an admin to reopen if changes are needed.'}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 16 }}>
         <div className="col">
@@ -162,7 +199,11 @@ export function ComplaintDetailPage() {
 
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Activity</h3>
-            <AuditTimeline entries={auditQ.data?.data ?? []} loading={auditQ.isLoading} />
+            <AuditTimeline
+              entries={auditQ.data?.data ?? []}
+              loading={auditQ.isLoading}
+              fieldsByKey={new Map((fieldsQ.data ?? []).map((f) => [f.key, f]))}
+            />
           </div>
         </div>
 
@@ -190,12 +231,30 @@ export function ComplaintDetailPage() {
               </select>
             </div>
             <div className="field">
+              <label>Complaint date</label>
+              <input
+                type="date"
+                value={c.complaintDate ?? ''}
+                disabled={!canEdit}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => complaintDateM.mutate(e.target.value || null)}
+              />
+            </div>
+            <div className="field">
               <label>Department</label>
               <input value={deptName(c.assignedDepartmentId)} disabled />
             </div>
             <div className="field">
               <label>Assigned to</label>
-              <input value={c.assignedTo ? `#${c.assignedTo}` : '— department queue —'} disabled />
+              <input
+                value={
+                  c.assignedTo
+                    ? historyQ.data?.find((h) => String(h.newAssignedTo) === String(c.assignedTo))?.newAssignedToName
+                      ?? `#${c.assignedTo}`
+                    : '— department queue —'
+                }
+                disabled
+              />
             </div>
             <div className="muted" style={{ fontSize: 12 }}>
               Created {new Date(c.createdAt).toLocaleString()}<br />
@@ -217,14 +276,14 @@ export function ComplaintDetailPage() {
                     <tr key={h.id}>
                       <td className="mono muted">{new Date(h.changedAt).toLocaleString()}</td>
                       <td>
-                        <span className="muted">{deptName(h.oldDepartmentId)}</span>{' → '}
-                        <span>{deptName(h.newDepartmentId)}</span>
+                        <span className="muted">{h.oldDepartmentName ?? '—'}</span>{' → '}
+                        <span>{h.newDepartmentName ?? '—'}</span>
                       </td>
-                      <td className="mono">
-                        <span className="muted">{h.oldAssignedTo ?? '—'}</span>{' → '}
-                        <span>{h.newAssignedTo ?? '—'}</span>
+                      <td>
+                        <span className="muted">{h.oldAssignedToName ?? '—'}</span>{' → '}
+                        <span>{h.newAssignedToName ?? '—'}</span>
                       </td>
-                      <td className="mono muted">#{h.changedBy}</td>
+                      <td className="muted">{h.changedByName ?? `#${h.changedBy}`}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -240,6 +299,13 @@ export function ComplaintDetailPage() {
         complaintId={id}
         current={{ departmentId: c.assignedDepartmentId, assignedTo: c.assignedTo }}
         canSeeUsers={canSeeUsers}
+      />
+
+      <ReopenDialog
+        open={reopenOpen}
+        onClose={() => setReopenOpen(false)}
+        complaintId={id}
+        currentStatus={c.status}
       />
     </section>
   );

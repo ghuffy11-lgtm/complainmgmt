@@ -38,6 +38,14 @@ export class ComplaintEntity {
   @Column({ name: 'assigned_at', type: 'timestamptz', nullable: true })
   assignedAt!: Date | null;
 
+  /**
+   * The date the complaint actually occurred (operator-supplied), distinct
+   * from `created_at` (when the row landed in CTS). YYYY-MM-DD; nullable
+   * because the operator may not know it at submission time.
+   */
+  @Column({ name: 'complaint_date', type: 'date', nullable: true })
+  complaintDate!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

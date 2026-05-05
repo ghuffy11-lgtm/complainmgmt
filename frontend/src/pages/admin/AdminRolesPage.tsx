@@ -106,19 +106,35 @@ function RoleEditor({
   const toast = useToast();
   const qc = useQueryClient();
 
-  // The current grant set isn't returned by the list endpoint; we maintain it
-  // as a local "draft" the admin commits via Save. (A future GET /roles/:id
-  // could pre-populate; phase-1 trade-off — kept simple.)
+  // Fetch the role's currently-granted permissions on selection. Without this,
+  // the editor showed an empty grid and Save would wipe every existing grant —
+  // see fix for the "select one perm, all others removed" bug.
+  const grantedQ = useQuery({
+    queryKey: ['role', role.id, 'permissions'],
+    queryFn: () => RolesService.getPermissionIds(role.id),
+  });
+
+  // The grid's "draft" state. Initialised from the server's current grants
+  // and reset whenever the selected role changes (so admins don't carry a
+  // half-edited draft from one role into another).
   const [granted, setGranted] = useState<Set<string>>(new Set());
   const [name, setName] = useState(role.name);
   const [description, setDescription] = useState(role.description ?? '');
+  const [dirty, setDirty] = useState(false);
 
-  // Reset form whenever the selected role changes.
+  // Re-prime form + grants whenever the selected role's data lands.
   useEffect(() => {
-    setGranted(new Set());
     setName(role.name);
     setDescription(role.description ?? '');
+    setDirty(false);
   }, [role.id]);
+
+  useEffect(() => {
+    if (grantedQ.data) {
+      setGranted(new Set(grantedQ.data));
+      setDirty(false);
+    }
+  }, [grantedQ.data]);
 
   const grouped = useMemo(() => groupByResource(perms), [perms]);
 
@@ -127,7 +143,12 @@ function RoleEditor({
       await RolesService.update(role.id, { name, description });
       await RolesService.setPermissions(role.id, [...granted]);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['roles'] }); toast.success('Saved'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['roles'] });
+      qc.invalidateQueries({ queryKey: ['role', role.id, 'permissions'] });
+      toast.success('Saved');
+      setDirty(false);
+    },
     onError: (err) => toast.error(errorMessage(err)),
   });
 
@@ -137,6 +158,7 @@ function RoleEditor({
       next.has(pid) ? next.delete(pid) : next.add(pid);
       return next;
     });
+    setDirty(true);
   };
 
   return (
@@ -162,42 +184,50 @@ function RoleEditor({
 
       <h3>Permissions</h3>
       <p className="muted" style={{ marginTop: 0 }}>
-        Tick to grant. Saving replaces the role's permission set with whatever's checked here.
+        Boxes reflect the role's <em>current</em> grants — toggle to add or
+        remove. Saving applies the diff to this role.
+        {grantedQ.isLoading && <> · <span className="subtle">loading current grants…</span></>}
       </p>
-      <div className="col">
+      <div className="col" style={{ opacity: grantedQ.isLoading ? 0.5 : 1 }}>
         {grouped.map((group) => (
           <div key={group.resource} className="card" style={{ background: 'var(--surface-2)' }}>
             <div className="mono" style={{ fontWeight: 600, marginBottom: 6 }}>{group.resource}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {group.actions.map((p) => (
-                <label
-                  key={p.id}
-                  className="row"
-                  style={{
-                    background: 'var(--surface)',
-                    padding: '3px 10px',
-                    borderRadius: 999,
-                    border: '1px solid var(--border)',
-                    cursor: canManage ? 'pointer' : 'default',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={granted.has(p.id)}
-                    disabled={!canManage}
-                    onChange={() => toggle(p.id)}
-                  />
-                  <span className="mono">{p.action}</span>
-                </label>
-              ))}
+              {group.actions.map((p) => {
+                const checked = granted.has(p.id);
+                return (
+                  <label
+                    key={p.id}
+                    className="row"
+                    style={{
+                      background: checked ? 'var(--primary-bg)' : 'var(--surface)',
+                      padding: '3px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${checked ? 'var(--primary-border)' : 'var(--border)'}`,
+                      color: checked ? 'var(--primary)' : 'var(--text)',
+                      cursor: canManage ? 'pointer' : 'default',
+                      transition: 'background-color 120ms ease, border-color 120ms ease, color 120ms ease',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!canManage || grantedQ.isLoading}
+                      onChange={() => toggle(p.id)}
+                    />
+                    <span className="mono">{p.action}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
         ))}
       </div>
 
       {canManage && (
-        <div className="row-end" style={{ marginTop: 12 }}>
-          <Button onClick={() => saveM.mutate()} disabled={saveM.isPending}>
+        <div className="row-end" style={{ marginTop: 12, alignItems: 'center' }}>
+          {dirty && <span className="muted" style={{ fontSize: 12 }}>unsaved changes</span>}
+          <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !dirty}>
             {saveM.isPending ? 'Saving…' : 'Save'}
           </Button>
         </div>

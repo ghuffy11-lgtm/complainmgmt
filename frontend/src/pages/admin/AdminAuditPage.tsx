@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AuditFilter, AuditService } from '../../services/audit.service';
 import { AuditTimeline } from '../../components/AuditTimeline';
 import { Button } from '../../components/ui/Button';
+import { DynamicFieldsService } from '../../services/dynamic-fields.service';
 
 const ACTIONS = [
-  '', 'create', 'update', 'delete', 'assign', 'lock_override',
+  '', 'create', 'update', 'delete', 'assign', 'lock_override', 'reopen',
   'attachment.added', 'attachment.removed',
   'password_reset_by_admin', 'role_permissions_changed', 'settings_changed',
 ];
@@ -14,6 +15,14 @@ export function AdminAuditPage() {
   const [filters, setFilters] = useState<AuditFilter>({ page: 1, pageSize: 50 });
 
   const q = useQuery({ queryKey: ['audit', filters], queryFn: () => AuditService.search(filters) });
+  // Use the public schema (any authenticated user) rather than the admin
+  // schema, since audit:read doesn't imply admin.fields:manage. Deactivated
+  // fields will simply render with their raw key in the timeline — fine.
+  const fieldsQ = useQuery({ queryKey: ['dynamic-fields'], queryFn: () => DynamicFieldsService.list() });
+  const fieldsByKey = useMemo(
+    () => new Map((fieldsQ.data ?? []).map((f) => [f.key, f])),
+    [fieldsQ.data],
+  );
 
   return (
     <section>
@@ -48,7 +57,12 @@ export function AdminAuditPage() {
         <Button variant="ghost" onClick={() => setFilters({ page: 1, pageSize: 50 })}>Clear</Button>
       </div>
 
-      <AuditTimeline entries={q.data?.data ?? []} loading={q.isLoading} showComplaint />
+      <AuditTimeline
+        entries={q.data?.data ?? []}
+        loading={q.isLoading}
+        showComplaint
+        fieldsByKey={fieldsByKey}
+      />
 
       {q.data && (
         <div className="row" style={{ marginTop: 12 }}>
