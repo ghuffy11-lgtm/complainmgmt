@@ -1,101 +1,59 @@
-import { ButtonHTMLAttributes, forwardRef, useState } from 'react';
+import * as React from 'react';
+import { Slot } from '@radix-ui/react-slot';
+import { cn } from '../../lib/utils';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
-type Size = 'sm' | 'md';
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
+export type ButtonSize = 'sm' | 'md';
 
-type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: Variant;
-  size?: Size;
-  /** Optional leading icon (typically from `./Icons`). */
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Render as the immediate child element (e.g. <a>) instead of <button>. */
+  asChild?: boolean;
+  /** Optional leading icon. Kept for backward compat with pre-port call-sites. */
   icon?: React.ReactNode;
-};
+  /** Render a spinner + disable the button while a network call is in flight. */
+  isLoading?: boolean;
+}
 
 /**
- * Single button primitive. Variants share the size grid; hover / active /
- * focus / disabled states are handled here so call-sites don't drift on
- * look-and-feel.
+ * Single button primitive. Variants share size + state grid so call-sites
+ * stay consistent. Use `asChild` to project styles onto a non-button element
+ * (e.g. router Link) without losing hover/focus.
  */
-export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
-  { variant = 'primary', size = 'md', style, disabled, icon, children, ...rest },
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = 'primary', size = 'md', asChild = false, icon, isLoading, disabled, children, ...rest },
   ref,
 ) {
-  const [hovered, setHovered] = useState(false);
-  const [active, setActive] = useState(false);
-
-  const merged: React.CSSProperties = {
-    ...sizeStyle(size),
-    ...variantStyle(variant, hovered, active),
-    ...(disabled ? { opacity: 0.5, pointerEvents: 'none' } : {}),
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    fontWeight: 500,
-    fontSize: size === 'sm' ? 13 : 14,
-    lineHeight: 1,
-    border: '1px solid transparent',
-    borderRadius: 'var(--radius)',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transition:
-      'background-color 120ms ease, border-color 120ms ease, color 120ms ease, ' +
-      'transform 80ms ease, box-shadow 120ms ease',
-    transform: active && !disabled ? 'translateY(1px)' : 'none',
-    userSelect: 'none',
-    ...style,
-  };
-
+  const Comp = asChild ? Slot : 'button';
   return (
-    <button
+    <Comp
       ref={ref}
+      disabled={disabled || isLoading}
+      className={cn(
+        'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        'disabled:opacity-50 disabled:pointer-events-none active:translate-y-[1px]',
+        {
+          'bg-primary text-white hover:bg-primary-hover shadow-sm': variant === 'primary',
+          'bg-surface text-text-main border border-border-strong hover:bg-surface-hover shadow-sm': variant === 'secondary',
+          'bg-danger text-white hover:bg-danger-hover shadow-sm': variant === 'danger',
+          'bg-transparent text-text-main hover:bg-surface-hover': variant === 'ghost',
+        },
+        {
+          'px-3 py-1.5 text-[13px]': size === 'sm',
+          'px-4 py-2 text-[14px]': size === 'md',
+        },
+        className,
+      )}
       {...rest}
-      disabled={disabled}
-      style={merged}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setActive(false); }}
-      onMouseDown={() => setActive(true)}
-      onMouseUp={() => setActive(false)}
     >
-      {icon && <span style={{ display: 'inline-flex' }}>{icon}</span>}
+      {isLoading ? (
+        <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden />
+      ) : icon ? (
+        <span className="inline-flex">{icon}</span>
+      ) : null}
       {children}
-    </button>
+    </Comp>
   );
 });
-
-function sizeStyle(size: Size): React.CSSProperties {
-  return size === 'sm'
-    ? { padding: '5px 10px' }
-    : { padding: '8px 14px' };
-}
-
-function variantStyle(v: Variant, hovered: boolean, active: boolean): React.CSSProperties {
-  switch (v) {
-    case 'primary':
-      return {
-        background:
-          active  ? 'var(--primary-active)' :
-          hovered ? 'var(--primary-hover)'  :
-                    'var(--primary)',
-        color: 'var(--text-on-primary)',
-        borderColor: 'var(--primary)',
-        boxShadow: hovered && !active ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
-      };
-    case 'danger':
-      return {
-        background: hovered ? 'var(--danger-hover)' : 'var(--danger)',
-        color: 'var(--text-on-primary)',
-        borderColor: 'var(--danger)',
-      };
-    case 'secondary':
-      return {
-        background: hovered ? 'var(--surface-hover)' : 'var(--surface)',
-        color: 'var(--text)',
-        borderColor: 'var(--border-strong)',
-      };
-    case 'ghost':
-      return {
-        background: hovered ? 'var(--surface-hover)' : 'transparent',
-        color: 'var(--text)',
-        borderColor: 'transparent',
-      };
-  }
-}
