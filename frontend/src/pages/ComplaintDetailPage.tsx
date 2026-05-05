@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Lock, RotateCcw, Save, UserPlus } from 'lucide-react';
 import { ComplaintsService } from '../services/complaints.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { DepartmentsService } from '../services/departments.service';
@@ -10,6 +11,7 @@ import { ReopenDialog } from '../components/ReopenDialog';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { AuditTimeline } from '../components/AuditTimeline';
 import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
 import { PriorityBadge, StatusBadge } from './ComplaintsListPage';
@@ -43,17 +45,16 @@ export function ComplaintDetailPage() {
   });
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
 
-  // Local edit buffer for dynamic field values, primed when the complaint loads.
-  const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [errors, setErrors] = useState<Record<string, string[]>>({});
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [reopenOpen, setReopenOpen] = useState(false);
+  const [draft, setDraft] = React.useState<Record<string, unknown>>({});
+  const [errors, setErrors] = React.useState<Record<string, string[]>>({});
+  const [assignOpen, setAssignOpen] = React.useState(false);
+  const [reopenOpen, setReopenOpen] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (complaintQ.data) setDraft({ ...complaintQ.data.values });
   }, [complaintQ.data]);
 
-  const dirty = useMemo(() => {
+  const dirty = React.useMemo(() => {
     if (!complaintQ.data) return false;
     return JSON.stringify(changedOnly(complaintQ.data.values, draft)) !== '{}';
   }, [complaintQ.data, draft]);
@@ -101,7 +102,6 @@ export function ComplaintDetailPage() {
     onError: (err) => toast.error(errorMessage(err)),
   });
 
-  // Inline edit of complaint_date — null clears, string sets.
   const complaintDateM = useMutation({
     mutationFn: (next: string | null) => ComplaintsService.update(id, { complaintDate: next }),
     onSuccess: () => {
@@ -114,13 +114,10 @@ export function ComplaintDetailPage() {
   });
 
   if (!id) return <p>Missing complaint id.</p>;
-  if (complaintQ.isLoading || fieldsQ.isLoading) return <p className="muted">Loading…</p>;
+  if (complaintQ.isLoading || fieldsQ.isLoading) return <p className="text-text-muted">Loading…</p>;
   if (!complaintQ.data) return <p>Complaint not found.</p>;
 
   const c = complaintQ.data;
-  // Closed/resolved complaints are read-only. Reopening requires
-  // `complaint:reopen` (which the backend also enforces). Both controls below
-  // gate on `editable` so the UI matches what the API will let through.
   const isFrozen = c.status === 'closed' || c.status === 'resolved';
   const canEdit = has('complaint:update') && !isFrozen;
   const canAssign = has('complaint:assign') && !isFrozen;
@@ -141,26 +138,40 @@ export function ComplaintDetailPage() {
   };
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <Button variant="ghost" onClick={() => nav('/complaints')}>← Back</Button>
-        <h1 style={{ margin: 0 }}>{c.referenceNo}</h1>
-        <StatusBadge status={c.status} />
-        <PriorityBadge priority={c.priority} />
-        <span className="spacer" />
-        {canAssign && <Button variant="secondary" onClick={() => setAssignOpen(true)}>Assign…</Button>}
-        {canReopen && <Button variant="danger" onClick={() => setReopenOpen(true)}>Reopen…</Button>}
+    <section className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => nav('/complaints')} className="px-2">
+            <ArrowLeft size={18} />
+          </Button>
+          <h1 className="text-xl font-bold tracking-tight text-text-main m-0">{c.referenceNo}</h1>
+          <StatusBadge status={c.status} />
+          <PriorityBadge priority={c.priority} />
+        </div>
+        <div className="flex items-center gap-2">
+          {canAssign && (
+            <Button variant="secondary" size="sm" icon={<UserPlus size={14} />} onClick={() => setAssignOpen(true)}>
+              Assign
+            </Button>
+          )}
+          {canReopen && (
+            <Button variant="danger" size="sm" icon={<RotateCcw size={14} />} onClick={() => setReopenOpen(true)}>
+              Reopen
+            </Button>
+          )}
+        </div>
       </div>
 
       {isFrozen && (
-        <div className="card" style={{
-          background: '#fffbeb', borderColor: '#fde68a',
-          marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center',
-        }}>
-          <span style={{ fontSize: 20 }}>🔒</span>
+        <div
+          className="rounded-md flex items-center gap-3 px-4 py-3 text-sm"
+          style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn-border)', color: 'var(--warn)' }}
+        >
+          <Lock size={16} className="shrink-0" />
           <div>
             <strong>This complaint is {c.status === 'closed' ? 'closed' : 'resolved'} — read-only.</strong>
-            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+            <div className="text-xs mt-0.5 text-text-muted">
               {canReopen
                 ? 'Use Reopen to make changes; the action is recorded in the activity timeline.'
                 : 'Ask an admin to reopen if changes are needed.'}
@@ -169,10 +180,30 @@ export function ComplaintDetailPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 16 }}>
-        <div className="col">
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>Fields</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main column */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card
+            title="Fields"
+            headerAction={
+              canEdit && dirty ? (
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => setDraft({ ...c.values })}>
+                    Discard
+                  </Button>
+                  <Button
+                    size="sm"
+                    icon={<Save size={14} />}
+                    disabled={!dirty || saveM.isPending}
+                    isLoading={saveM.isPending}
+                    onClick={() => saveM.mutate()}
+                  >
+                    Save
+                  </Button>
+                </div>
+              ) : null
+            }
+          >
             {(fieldsQ.data ?? []).map((f) => (
               <DynamicFieldRenderer
                 key={f.id}
@@ -185,111 +216,113 @@ export function ComplaintDetailPage() {
                 error={errors[f.key]?.join(', ')}
               />
             ))}
-            {canEdit && (
-              <div className="row-end" style={{ marginTop: 12 }}>
-                <Button variant="ghost" disabled={!dirty} onClick={() => setDraft({ ...c.values })}>Discard</Button>
-                <Button disabled={!dirty || saveM.isPending} onClick={() => saveM.mutate()}>
-                  {saveM.isPending ? 'Saving…' : 'Save changes'}
-                </Button>
-              </div>
-            )}
-          </div>
+          </Card>
 
           <AttachmentsPanel complaintId={id} />
 
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>Activity</h3>
+          <Card title="Activity" subtitle="Journal of all changes and actions">
             <AuditTimeline
               entries={auditQ.data?.data ?? []}
               loading={auditQ.isLoading}
               fieldsByKey={new Map((fieldsQ.data ?? []).map((f) => [f.key, f]))}
             />
-          </div>
+          </Card>
         </div>
 
-        <div className="col">
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>State</h3>
-            <div className="field">
-              <label>Status</label>
-              <select
-                value={c.status}
-                disabled={!canEdit}
-                onChange={(e) => statusM.mutate(e.target.value as ComplaintStatus)}
-              >
-                {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-              </select>
+        {/* Sidebar column */}
+        <div className="space-y-6">
+          <Card title="State">
+            <div className="space-y-1">
+              <div className="field">
+                <label className="text-[13px] font-medium text-text-main">Status</label>
+                <select
+                  value={c.status}
+                  disabled={!canEdit}
+                  onChange={(e) => statusM.mutate(e.target.value as ComplaintStatus)}
+                  className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
+                >
+                  {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label className="text-[13px] font-medium text-text-main">Priority</label>
+                <select
+                  value={c.priority}
+                  disabled={!canEdit}
+                  onChange={(e) => priorityM.mutate(e.target.value as ComplaintPriority)}
+                  className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
+                >
+                  {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label className="text-[13px] font-medium text-text-main">Complaint date</label>
+                <input
+                  type="date"
+                  value={c.complaintDate ?? ''}
+                  disabled={!canEdit}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => complaintDateM.mutate(e.target.value || null)}
+                  className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
+                />
+              </div>
             </div>
-            <div className="field">
-              <label>Priority</label>
-              <select
-                value={c.priority}
-                disabled={!canEdit}
-                onChange={(e) => priorityM.mutate(e.target.value as ComplaintPriority)}
-              >
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Complaint date</label>
-              <input
-                type="date"
-                value={c.complaintDate ?? ''}
-                disabled={!canEdit}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => complaintDateM.mutate(e.target.value || null)}
-              />
-            </div>
-            <div className="field">
-              <label>Department</label>
-              <input value={deptName(c.assignedDepartmentId)} disabled />
-            </div>
-            <div className="field">
-              <label>Assigned to</label>
-              <input
-                value={
-                  c.assignedTo
+
+            <div className="pt-3 mt-3 border-t border-border space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-text-muted">Department</span>
+                <span className="font-medium text-text-main">{deptName(c.assignedDepartmentId)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-muted">Assigned to</span>
+                <span className="font-medium text-text-main">
+                  {c.assignedTo
                     ? historyQ.data?.find((h) => String(h.newAssignedTo) === String(c.assignedTo))?.newAssignedToName
                       ?? `#${c.assignedTo}`
-                    : '— department queue —'
-                }
-                disabled
-              />
+                    : '— department queue —'}
+                </span>
+              </div>
             </div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              Created {new Date(c.createdAt).toLocaleString()}<br />
-              Updated {new Date(c.updatedAt).toLocaleString()}
-            </div>
-          </div>
 
-          <div className="card">
-            <h3 style={{ marginTop: 0 }}>Assignment history</h3>
-            {historyQ.isLoading && <p className="muted">Loading…</p>}
-            {historyQ.data && historyQ.data.length === 0 && <p className="muted">No assignments yet.</p>}
-            {historyQ.data && historyQ.data.length > 0 && (
-              <table>
-                <thead>
-                  <tr><th>When</th><th>Department</th><th>User</th><th>By</th></tr>
-                </thead>
-                <tbody>
-                  {historyQ.data.map((h) => (
-                    <tr key={h.id}>
-                      <td className="mono muted">{new Date(h.changedAt).toLocaleString()}</td>
-                      <td>
-                        <span className="muted">{h.oldDepartmentName ?? '—'}</span>{' → '}
-                        <span>{h.newDepartmentName ?? '—'}</span>
-                      </td>
-                      <td>
-                        <span className="muted">{h.oldAssignedToName ?? '—'}</span>{' → '}
-                        <span>{h.newAssignedToName ?? '—'}</span>
-                      </td>
-                      <td className="muted">{h.changedByName ?? `#${h.changedBy}`}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="pt-3 mt-3 border-t border-border text-[10px] text-text-subtle uppercase font-semibold tracking-wider space-y-1">
+              <p className="m-0">Created: {new Date(c.createdAt).toLocaleString()}</p>
+              <p className="m-0">Updated: {new Date(c.updatedAt).toLocaleString()}</p>
+            </div>
+          </Card>
+
+          <Card title="Assignment history">
+            {historyQ.isLoading && <p className="text-text-muted text-sm">Loading…</p>}
+            {historyQ.data && historyQ.data.length === 0 && (
+              <p className="text-text-muted text-sm">No assignments yet.</p>
             )}
-          </div>
+            {historyQ.data && historyQ.data.length > 0 && (
+              <ul className="space-y-3">
+                {historyQ.data.map((h) => (
+                  <li
+                    key={h.id}
+                    className="text-xs px-3 py-2 rounded-md border border-border bg-surface-2/40"
+                  >
+                    <div className="flex justify-between mb-1">
+                      <span className="font-medium text-text-main">
+                        {h.newDepartmentName ?? '—'}
+                        {h.newAssignedToName && <> · {h.newAssignedToName}</>}
+                      </span>
+                      <span className="font-mono text-text-subtle">
+                        {new Date(h.changedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="text-text-muted">
+                      <span className="opacity-60">from</span>{' '}
+                      {h.oldDepartmentName ?? '—'}
+                      {h.oldAssignedToName && <> · {h.oldAssignedToName}</>}
+                      <span className="opacity-60"> · by </span>
+                      {h.changedByName ?? `#${h.changedBy}`}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
       </div>
 
@@ -311,7 +344,6 @@ export function ComplaintDetailPage() {
   );
 }
 
-/** Send only fields whose value changed — keeps the audit trail honest. */
 function changedOnly(orig: Record<string, unknown>, draft: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const keys = new Set([...Object.keys(orig), ...Object.keys(draft)]);
