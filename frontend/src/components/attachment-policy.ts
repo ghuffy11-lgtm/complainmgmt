@@ -5,7 +5,7 @@
  * gives the user a precise message instead of a generic upload failure.
  */
 export const MAX_BYTES = 2 * 1024 * 1024;
-export const MAX_FILES = 3;
+export const MAX_FILES = 5;
 
 export const ALLOWED_MIME = new Set<string>([
   'application/pdf',

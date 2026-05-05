@@ -19,7 +19,7 @@ export const envSchema = Joi.object({
   JWT_ACCESS_TTL: Joi.number().integer().min(60).default(900),
   JWT_REFRESH_TTL: Joi.number().integer().min(3600).default(60 * 60 * 24 * 7),
   BCRYPT_ROUNDS: Joi.number().integer().min(8).max(15).default(12),
-  ATTACHMENT_MAX_FILES_PER_COMPLAINT: Joi.number().integer().min(1).max(10).default(3),
+  ATTACHMENT_MAX_FILES_PER_COMPLAINT: Joi.number().integer().min(1).max(10).default(5),
   ATTACHMENT_MAX_BYTES: Joi.number().integer().min(1024).default(2 * 1024 * 1024),
   CORS_ORIGINS: Joi.string().default(''),
   INITIAL_ADMIN_USERNAME: Joi.string().optional(),
@@ -42,7 +42,7 @@ export function loadConfig(): AppConfig {
     },
     bcryptRounds: parseInt(env.BCRYPT_ROUNDS ?? '12', 10),
     attachments: {
-      maxFilesPerComplaint: parseInt(env.ATTACHMENT_MAX_FILES_PER_COMPLAINT ?? '3', 10),
+      maxFilesPerComplaint: parseInt(env.ATTACHMENT_MAX_FILES_PER_COMPLAINT ?? '5', 10),
       maxBytes: parseInt(env.ATTACHMENT_MAX_BYTES ?? String(2 * 1024 * 1024), 10),
     },
     corsOrigins: (env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),

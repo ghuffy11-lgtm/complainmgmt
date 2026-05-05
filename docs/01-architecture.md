@@ -38,7 +38,7 @@ Only NGINX exposes ports to the host. The backend and frontend are unreachable f
 | 6 | **Complaints** | Complaint lifecycle, status, dynamic field values, locking metadata. Department-scoped reads via `complaint.own:read` + creator-OR. |
 | 7 | **Field Locking** | First-writer-wins ownership of designated fields with supervisor/admin override. |
 | 8 | **Assignment** | Single-department assignment with full assignment history; assignee must be an active member of the target department. |
-| 9 | **Attachments** | Up to 3 files × 2 MB each per complaint, stored as `bytea`. |
+| 9 | **Attachments** | Up to 5 files × 2 MB each per complaint, stored as `bytea`. |
 | 10 | **Audit** | Append-only log of every field change across complaint records. |
 | 11 | **Dashboard** | Aggregated counts/breakdowns. `dashboard:read` sees everything; `dashboard.own:read` scopes to the caller's active department memberships. |
 | 12 | **Admin** | Endpoints/views to manage users, roles, permissions, fields, departments, settings. |

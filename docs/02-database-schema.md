@@ -247,7 +247,7 @@ The `?fv[<key>]=<value>` filter on the list endpoint runs an `EXISTS` subquery a
 | uploaded_by | BIGINT FK users.id NOT NULL | |
 | uploaded_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | |
 
-A trigger enforces ≤ 3 attachments per `complaint_id`. Allowed MIME set is image/png, image/jpeg, application/pdf (sniffed, not trusted from the request header).
+A trigger enforces ≤ 5 attachments per `complaint_id` (raised from 3 in migration 0021). Allowed MIME set is image/png, image/jpeg, application/pdf (sniffed, not trusted from the request header).
 
 ## Audit
 
@@ -341,6 +341,8 @@ A flat list of all migrations under `db/migrations/`:
 | 0017 | `user_departments_multi.sql` | introduces `user_departments` join + the primary-membership trigger |
 | 0018 | `complaint_own_read.sql` | provisions `complaint.own:read`, swaps it in for supervisor + employee in place of broad `complaint:read` |
 | 0019 | `branding.sql` | `branding_assets` table + seeded `branding.*` settings |
+| 0020 | `branding_theme.sql` | adds `branding.primary_color` setting (default `#2563eb`) for the theme picker |
+| 0021 | `attachment_cap_5.sql` | raises the per-complaint attachment count cap from 3 to 5 |
 
 ## Seed data
 
