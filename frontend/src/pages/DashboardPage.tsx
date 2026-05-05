@@ -19,6 +19,7 @@ import {
 import { DashboardService } from '../services/dashboard.service';
 import { DepartmentsService } from '../services/departments.service';
 import { usePermissions } from '../hooks/usePermissions';
+import { useBranding } from '../hooks/useBranding';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { cn } from '../lib/utils';
@@ -30,8 +31,9 @@ const WINDOWS = [
 ];
 
 // Recharts can't read CSS variables directly — colours are baked in at
-// render time. Keep these in sync with styles.css :root if the palette shifts.
-const PRIMARY = '#2563eb';
+// render time. The primary is themeable (admin-picked); the rest stay
+// fixed because they signal status (success/warn/danger) and shouldn't
+// drift with the theme.
 const SUCCESS = '#10b981';
 const WARN = '#f59e0b';
 const DANGER = '#dc2626';
@@ -39,20 +41,24 @@ const SLATE_500 = '#64748b';
 const SLATE_300 = '#94a3b8';
 const GRID = '#e2e8f0';
 
-const STATUS_COLORS: Record<string, string> = {
-  open: PRIMARY,
-  in_progress: WARN,
-  resolved: SUCCESS,
-  closed: SLATE_500,
-  rejected: DANGER,
-};
+function buildStatusColors(primary: string): Record<string, string> {
+  return {
+    open: primary,
+    in_progress: WARN,
+    resolved: SUCCESS,
+    closed: SLATE_500,
+    rejected: DANGER,
+  };
+}
 
-const PRIORITY_COLORS: Record<string, string> = {
-  low: SLATE_300,
-  normal: PRIMARY,
-  high: WARN,
-  critical: DANGER,
-};
+function buildPriorityColors(primary: string): Record<string, string> {
+  return {
+    low: SLATE_300,
+    normal: primary,
+    high: WARN,
+    critical: DANGER,
+  };
+}
 
 const AGING_COLORS = [SUCCESS, WARN, DANGER, '#7f1d1d'];
 
@@ -85,6 +91,9 @@ export function DashboardPage() {
 // ─── Full / manager dashboard ───────────────────────────────────────────
 
 function ManagerDashboard() {
+  const primary = useBranding().primaryColor;
+  const STATUS_COLORS = buildStatusColors(primary);
+  const PRIORITY_COLORS = buildPriorityColors(primary);
   const summaryQ = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => DashboardService.summary() });
   const statusQ = useQuery({ queryKey: ['dashboard', 'by-status'], queryFn: () => DashboardService.byStatus() });
   const priorityQ = useQuery({ queryKey: ['dashboard', 'by-priority'], queryFn: () => DashboardService.byPriority() });
@@ -128,7 +137,7 @@ function ManagerDashboard() {
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
         {!trendQ.isLoading && trendTotal === 0 && <NoTrendData days={days} />}
-        {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} />}
+        {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} primary={primary} />}
         <div className="text-right text-xs text-text-muted mt-2">
           {trendTotal} complaints in {days} days
         </div>
@@ -155,6 +164,7 @@ function ManagerDashboard() {
             link: `/complaints?priority=${encodeURIComponent(r.priority)}`,
           }))}
           loading={priorityQ.isLoading}
+          primary={primary}
         />
       </div>
 
@@ -169,12 +179,14 @@ function ManagerDashboard() {
           }))}
           loading={deptQ.isLoading}
           horizontal
+          primary={primary}
         />
         <BarPanel
           title="Open complaint aging"
           subtitle="status ∈ {open, in_progress}"
           data={(agingQ.data ?? []).map((r, i) => ({ key: r.bucket, count: r.count, color: AGING_COLORS[i] }))}
           loading={agingQ.isLoading}
+          primary={primary}
         />
       </div>
 
@@ -184,7 +196,7 @@ function ManagerDashboard() {
         {!latencyQ.isLoading && (latencyQ.data?.count ?? 0) === 0 && (
           <p className="muted">No complaints have been resolved or closed in the last {days} days.</p>
         )}
-        {!latencyQ.isLoading && latencyQ.data && latencyQ.data.count > 0 && <LatencyDetail data={latencyQ.data} />}
+        {!latencyQ.isLoading && latencyQ.data && latencyQ.data.count > 0 && <LatencyDetail data={latencyQ.data} primary={primary} />}
       </Card>
     </section>
   );
@@ -194,6 +206,9 @@ function ManagerDashboard() {
 
 function UserDashboard() {
   const { user } = usePermissions();
+  const primary = useBranding().primaryColor;
+  const STATUS_COLORS = buildStatusColors(primary);
+  const PRIORITY_COLORS = buildPriorityColors(primary);
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
   const myDeptIds = user?.departmentIds ?? [];
   const myDeptNames = myDeptIds
@@ -241,7 +256,7 @@ function UserDashboard() {
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
         {!trendQ.isLoading && trendTotal === 0 && <NoTrendData days={days} />}
-        {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} />}
+        {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} primary={primary} />}
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -264,6 +279,7 @@ function UserDashboard() {
             link: `${linkBase}?priority=${encodeURIComponent(r.priority)}`,
           }))}
           loading={priorityQ.isLoading}
+          primary={primary}
         />
       </div>
 
@@ -274,6 +290,7 @@ function UserDashboard() {
             title=""
             data={agingQ.data.map((r, i) => ({ key: r.bucket, count: r.count, color: AGING_COLORS[i] }))}
             loading={false}
+            primary={primary}
           />
         )}
       </Card>
@@ -392,21 +409,21 @@ function NoTrendData({ days }: { days: number }) {
   );
 }
 
-function TrendChart({ data }: { data: { date: string; count: number }[] }) {
+function TrendChart({ data, primary }: { data: { date: string; count: number }[]; primary: string }) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={PRIMARY} stopOpacity={0.18} />
-            <stop offset="100%" stopColor={PRIMARY} stopOpacity={0} />
+            <stop offset="0%" stopColor={primary} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={primary} stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: SLATE_500 }} interval="preserveStartEnd" minTickGap={40} axisLine={false} tickLine={false} />
         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={tooltipStyle} />
-        <Area type="monotone" dataKey="count" stroke={PRIMARY} fill="url(#trendFill)" strokeWidth={2} />
+        <Area type="monotone" dataKey="count" stroke={primary} fill="url(#trendFill)" strokeWidth={2} />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -414,8 +431,10 @@ function TrendChart({ data }: { data: { date: string; count: number }[] }) {
 
 function LatencyDetail({
   data,
+  primary,
 }: {
   data: NonNullable<Awaited<ReturnType<typeof DashboardService.resolutionLatency>>>;
+  primary: string;
 }) {
   return (
     <>
@@ -433,7 +452,7 @@ function LatencyDetail({
           <YAxis yAxisId="hours" orientation="right" tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={tooltipStyle} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar yAxisId="count" dataKey="count" name="Resolutions" fill={PRIMARY} />
+          <Bar yAxisId="count" dataKey="count" name="Resolutions" fill={primary} />
           <Bar yAxisId="hours" dataKey="avgHours" name="Avg hours" fill={WARN} />
         </BarChart>
       </ResponsiveContainer>
@@ -496,12 +515,14 @@ function BarPanel({
   data,
   loading,
   horizontal,
+  primary,
 }: {
   title: string;
   subtitle?: string;
   data: { key: string; count: number; color?: string; link?: string }[];
   loading: boolean;
   horizontal?: boolean;
+  primary: string;
 }) {
   const total = data.reduce((s, d) => s + d.count, 0);
   return (
@@ -528,8 +549,8 @@ function BarPanel({
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
               )}
               <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="count" fill={PRIMARY} radius={[3, 3, 0, 0]}>
-                {data.map((d, i) => <Cell key={i} fill={d.color ?? PRIMARY} />)}
+              <Bar dataKey="count" fill={primary} radius={[3, 3, 0, 0]}>
+                {data.map((d, i) => <Cell key={i} fill={d.color ?? primary} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -539,13 +560,13 @@ function BarPanel({
                 <li key={d.key}>
                   {d.link ? (
                     <Link to={d.link} className="flex items-center gap-2 px-2 py-1 rounded-sm text-sm text-text-main hover:bg-surface-hover transition-colors">
-                      <Dot color={d.color ?? PRIMARY} />
+                      <Dot color={d.color ?? primary} />
                       <span className="flex-1">{d.key}</span>
                       <span className="font-mono text-xs text-text-muted">{d.count}</span>
                     </Link>
                   ) : (
                     <div className="flex items-center gap-2 px-2 py-1 text-sm">
-                      <Dot color={d.color ?? PRIMARY} />
+                      <Dot color={d.color ?? primary} />
                       <span className="flex-1">{d.key}</span>
                       <span className="font-mono text-xs text-text-muted">{d.count}</span>
                     </div>

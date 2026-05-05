@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { BrandingService } from './branding.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -27,6 +27,15 @@ class UpdateBrandingDto {
   @IsOptional() @IsString() @MaxLength(160) loginSubtitle?: string;
   @IsOptional() @IsString() @MaxLength(240) loginTagline?: string;
   @IsOptional() @IsString() @MaxLength(240) footerText?: string;
+
+  /** #RRGGBB or #RGB. Validated; the frontend derives the rest of the
+   *  palette from this single value via HSL math. */
+  @IsOptional()
+  @IsString()
+  @Matches(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i, {
+    message: 'primaryColor must be a hex color like #2563eb',
+  })
+  primaryColor?: string;
 }
 
 @Controller('branding')

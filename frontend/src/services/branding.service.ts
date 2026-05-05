@@ -7,6 +7,8 @@ export type Branding = {
   loginSubtitle: string;
   loginTagline: string;
   footerText: string;
+  /** Hex like #2563eb — frontend derives the rest of the primary palette. */
+  primaryColor: string;
   /** null = no logo uploaded; render the fallback shield icon. */
   logoUrl: string | null;
   logoUpdatedAt: string | null;

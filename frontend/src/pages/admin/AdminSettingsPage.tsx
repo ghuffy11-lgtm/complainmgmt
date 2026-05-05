@@ -9,6 +9,7 @@ import { Input } from '../../components/ui/Input';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 import { BRANDING_QUERY_KEY } from '../../hooks/useBranding';
+import { THEME_PRESETS, derivePrimaryFamily, findPreset } from '../../lib/theme';
 
 export function AdminSettingsPage() {
   const { has } = usePermissions();
@@ -95,6 +96,13 @@ function BrandingCard({ canManage }: { canManage: boolean }) {
         </Button>
       ) : undefined}
     >
+      {/* Theme */}
+      <ThemePicker
+        value={value('primaryColor')}
+        onChange={(hex) => setDraft((s) => ({ ...s, primaryColor: hex }))}
+        disabled={!canManage}
+      />
+
       {/* Logo */}
       <div className="flex items-center gap-4 mb-6 pb-6 border-b border-border">
         <div
@@ -171,6 +179,121 @@ function BrandingCard({ canManage }: { canManage: boolean }) {
       </div>
     </Card>
   );
+}
+
+// ─── Theme picker (presets + custom hex) ───────────────────────────────
+
+function ThemePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (hex: string) => void;
+  disabled: boolean;
+}) {
+  const matched = findPreset(value);
+  const isCustom = matched === null;
+  const family = derivePrimaryFamily(value || '#2563eb');
+
+  return (
+    <div className="mb-6 pb-6 border-b border-border">
+      <p className="text-sm font-medium text-text-main m-0">Theme</p>
+      <p className="text-xs text-text-muted m-0 mt-0.5">
+        Pick a preset or supply a custom primary color. Hover, active, badge-bg, and
+        border tones are derived automatically. Sidebar stays dark.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-end mt-4">
+        {/* Preset dropdown */}
+        <div className="field m-0">
+          <label className="text-[13px] font-medium text-text-main">Preset</label>
+          <select
+            value={isCustom ? '__custom__' : matched.key}
+            onChange={(e) => {
+              const k = e.target.value;
+              if (k === '__custom__') return; // keep current value, just lets the picker show
+              const preset = THEME_PRESETS.find((p) => p.key === k);
+              if (preset) onChange(preset.primary);
+            }}
+            disabled={disabled}
+            className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
+          >
+            {THEME_PRESETS.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+            <option value="__custom__">Custom…</option>
+          </select>
+          {!isCustom && matched.description && (
+            <span className="hint">{matched.description}</span>
+          )}
+          {isCustom && (
+            <span className="hint">Custom primary color — preset doesn't match.</span>
+          )}
+        </div>
+
+        {/* Custom color picker */}
+        <div className="field m-0">
+          <label className="text-[13px] font-medium text-text-main">Color</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={normalizeHex(value)}
+              onChange={(e) => onChange(e.target.value)}
+              disabled={disabled}
+              className="h-10 w-12 border border-border-strong rounded-md cursor-pointer disabled:cursor-not-allowed"
+              aria-label="Primary color"
+            />
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              disabled={disabled}
+              maxLength={7}
+              className="font-mono h-10 w-24 bg-surface border border-border-strong rounded-md px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
+              placeholder="#2563eb"
+            />
+          </div>
+        </div>
+
+        {/* Live swatch row */}
+        <div className="field m-0">
+          <label className="text-[13px] font-medium text-text-main">Preview</label>
+          <div
+            className="flex items-center h-10 rounded-md border border-border overflow-hidden"
+            title="primary · hover · active · bg · border"
+          >
+            {([
+              ['primary', family.primary],
+              ['hover', family.primaryHover],
+              ['active', family.primaryActive],
+              ['bg', family.primaryBg],
+              ['border', family.primaryBorder],
+            ] as const).map(([label, hex]) => (
+              <span
+                key={label}
+                title={`${label}: ${hex}`}
+                style={{ background: hex, width: 28, height: '100%' }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Normalise a possibly-3-char hex to a 6-char hex for `<input type=color>`,
+ *  which only accepts 6-char form. Returns the input unchanged if it's
+ *  already 6 chars. Empty / invalid input falls back to the editorial blue. */
+function normalizeHex(value: string): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
+  if (!m) return '#2563eb';
+  if (m[1].length === 3) {
+    const [r, g, b] = m[1];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return value.toLowerCase();
 }
 
 // ─── Raw settings (low-level JSON editor) ──────────────────────────────

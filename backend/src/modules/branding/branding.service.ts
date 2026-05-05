@@ -17,6 +17,10 @@ const TEXT_KEYS = [
   'loginSubtitle',
   'loginTagline',
   'footerText',
+  /** Single primary-colour hex. Hover / active / bg / border variants are
+   *  derived client-side from this via HSL math, so the rest of the
+   *  palette doesn't need separate settings rows. */
+  'primaryColor',
 ] as const;
 
 type TextKey = typeof TEXT_KEYS[number];
@@ -29,6 +33,7 @@ const DEFAULTS: Record<TextKey, string> = {
   loginSubtitle: 'Quality & Patient Safety',
   loginTagline: 'Sign in to continue to the portal',
   footerText: 'Internal use only · Access logged',
+  primaryColor: '#2563eb',
 };
 
 /** Map between camelCase (frontend) and dotted setting keys (DB). */
@@ -39,6 +44,7 @@ const KEY_MAP: Record<TextKey, string> = {
   loginSubtitle: 'branding.login_subtitle',
   loginTagline: 'branding.login_tagline',
   footerText: 'branding.footer_text',
+  primaryColor: 'branding.primary_color',
 };
 
 const ALLOWED_LOGO_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
@@ -51,6 +57,9 @@ export type BrandingDto = {
   loginSubtitle: string;
   loginTagline: string;
   footerText: string;
+  /** Hex color (#RRGGBB) — frontend derives the rest of the palette
+   *  from this and applies it as CSS-variable overrides at runtime. */
+  primaryColor: string;
   /** Stable URL the frontend can <img src=…> at. null when no logo uploaded. */
   logoUrl: string | null;
   /** Updated-at of the logo, used as a cache buster on the URL. */
