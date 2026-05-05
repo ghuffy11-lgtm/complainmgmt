@@ -2,12 +2,14 @@
 
 Enterprise complaint management platform replacing an Excel-based workflow.
 
-- **Frontend:** React 18 + Vite + TypeScript
+- **Frontend:** React 18 + Vite + Tailwind v4 + TypeScript
 - **Backend:** NestJS 10 + TypeORM + PostgreSQL
 - **Infra:** Docker Compose, NGINX (TLS termination)
 - **Auth:** Local (bcrypt) — designed for LDAP/AD swap-in
 - **Authorization:** Fully dynamic RBAC, no hardcoded roles or permissions
 - **Forms:** Admin-defined complaint fields, no schema redeploys
+- **Multi-department:** Users can belong to N departments; supervisors / employees see only their depts (creators always see their filings); managers see everything
+- **Branding:** Logo + system name + footer text editable from Admin → Settings, no redeploy
 
 ## Repository layout
 
@@ -32,9 +34,30 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- Frontend: https://localhost
-- API:      https://localhost/api
-- Postgres: localhost:5432 (from host, dev only)
+- Frontend: `https://localhost:${NGINX_HTTPS_PORT}` (default 443; common dev override 8443)
+- API:      `https://localhost:${NGINX_HTTPS_PORT}/api`
+- Postgres: `localhost:${POSTGRES_PORT}` (from host, dev only)
+
+Default admin user is created from `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` in `.env` on first boot. Change the password right after.
+
+### Smoke test
+
+```bash
+bash scripts/smoke-test.sh         # exits non-zero if anything is broken
+```
+
+Covers: health, login, permission materialisation, dynamic field schema, complaint create/update/audit, attachment upload + MIME sniffing, field locking, dashboard. The script is also a useful reference for the API contracts.
+
+## Recent additions (2026)
+
+The current `main` includes work from the post-handover phase:
+
+- **Editorial visual theme** — Tailwind v4, semantic CSS-variable palette (royal blue primary + slate sidebar), lucide-react icons throughout. To re-skin, edit the `:root` block in `frontend/src/styles.css`.
+- **Searchable dynamic fields** — admin can flag any text/number/dropdown field as searchable; the complaints list auto-renders a per-field filter input with URL-roundtripped state.
+- **Digit-count validators** — number-typed fields support `{"digits": N}` / `{"minDigits": M, "maxDigits": N}` in their validation block, the natural way to express "exactly 8 digits" without computing numeric bounds.
+- **Department-scoped visibility** — `complaint.own:read` restricts list / detail / update to complaints in the caller's active departments OR complaints they created.
+- **Multi-department membership** — `user_departments(user_id, department_id, is_active)` join table; users can belong to N depts. Assignment dialog cascades department → assignee (member-only).
+- **Admin-managed branding** — single-row `branding_assets` table for the logo, plus `branding.*` keys in `system_settings`. A public `/api/branding` endpoint serves both, used by the login page and app shell.
 
 ## Documentation
 
