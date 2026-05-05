@@ -25,7 +25,23 @@ type FieldDef = {
   label: string;
   type: 'text' | 'number' | 'date' | 'dropdown' | 'file';
   isRequired: boolean;
-  validation: { min?: number; max?: number; maxLength?: number; regex?: string };
+  /** When true, the complaints list grows a per-field filter input
+   *  (?fv[<key>]=…) — only meaningful for text / number / dropdown. */
+  isSearchable: boolean;
+  validation: {
+    // text
+    maxLength?: number;
+    regex?: string;
+    // number — value bounds
+    min?: number;
+    max?: number;
+    // number — digit-count validators (operator-friendly recipes)
+    digits?: number;       // exactly N digits
+    minDigits?: number;
+    maxDigits?: number;
+    // date — ISO bounds
+    // (re-uses min / max as YYYY-MM-DD strings)
+  };
   visibility: { roles: '*' | string[] };
   locking: 'none' | 'first_writer_wins';
   isActive: boolean;
@@ -68,7 +84,30 @@ The trade-off is more rows; that's acceptable for the expected volume.
 1. **Type coerce** — strings to numbers/dates as needed; reject if coercion fails.
 2. **Per-field rules** — required, min/max, maxLength, regex. Dropdown values are checked against `dynamic_field_options`.
 
+For `type='number'` the validator additionally honours digit-count rules:
+
+| Validator | Effect | Error code |
+|---|---|---|
+| `digits: N` | exact digit count of `Math.trunc(Math.abs(value))` | `WRONG_DIGIT_COUNT` |
+| `minDigits` / `maxDigits` | digit-count range | `TOO_FEW_DIGITS` / `TOO_MANY_DIGITS` |
+
+The digit count is computed against the magnitude — sign and decimal part are stripped. So `{"digits": 3}` accepts `-123`, `123`, and `123.45`.
+
+These exist because operators consistently mis-write `{"min":8, "max":8}` thinking it means "8 digits"; that JSON actually means "value must equal 8". The dedicated `digits` validator reads naturally and computes the equivalent value bounds internally.
+
 The result shape is `{ ok: boolean, errors: { [fieldKey]: string[] } }`. The controller turns errors into a `400 VALIDATION_FAILED` payload.
+
+### Searchable filter
+
+When a field has `is_searchable = true` (text / number / dropdown only), the complaints list endpoint accepts `?fv[<key>]=<value>` and applies it via an `EXISTS` subquery against `complaint_field_values`:
+
+- `text` → `value_text ILIKE '%<value>%'`
+- `number` → `value_number::text ILIKE '%<value>%'` (so partial digit matches work)
+- `dropdown` → exact match on `value_option_id`
+
+Multiple `fv[…]` filters combine with AND. The endpoint refuses any key that isn't `is_active = true AND is_searchable = true` with `400 BAD_FIELD_FILTER` — protects against an admin accidentally exposing hidden data by forgetting to flip the flag.
+
+The implementation uses `EXISTS` rather than `INNER JOIN` because TypeORM's `getManyAndCount` runs a separate count query whose code path can't walk alias metadata for a raw-table join — it surfaces as `Cannot read properties of undefined (reading 'databaseName')`. `EXISTS` keeps the row set 1-row-per-complaint and works through both the data and count paths.
 
 ### Field deletion
 

@@ -30,19 +30,20 @@ Only NGINX exposes ports to the host. The backend and frontend are unreachable f
 
 | # | Module | Responsibility |
 |---|---|---|
-| 1 | **Auth** | Local username/password, JWT issuance, refresh, password change. LDAP-ready interface. |
-| 2 | **Users** | User CRUD, profile, role assignment, activation/deactivation. |
+| 1 | **Auth** | Local username/password, JWT issuance, refresh, password change. JWT carries `departmentIds[]` for scope-aware reads. LDAP-ready interface. |
+| 2 | **Users** | User CRUD, profile, role assignment, activation/deactivation. Multi-department membership via `user_departments` join (each row carries `is_active`). `users.department_id` is the *primary*, kept consistent with the join by a BEFORE-INSERT/UPDATE trigger. |
 | 3 | **Roles & Permissions** | Dynamic role definitions; permissions as `(resource, action)` tuples; role↔permission and user↔role joins. |
-| 4 | **Departments** | Org units used for complaint assignment. |
-| 5 | **Dynamic Fields** | Admin-managed complaint field schema (label, type, validation, dropdown options, role visibility). |
-| 6 | **Complaints** | Complaint lifecycle, status, dynamic field values, locking metadata. |
+| 4 | **Departments** | Org units used for complaint assignment + (via memberships) for read scoping. |
+| 5 | **Dynamic Fields** | Admin-managed complaint field schema (label, type, validation incl. `digits`/`minDigits`/`maxDigits`, dropdown options, role visibility, `is_searchable` flag). |
+| 6 | **Complaints** | Complaint lifecycle, status, dynamic field values, locking metadata. Department-scoped reads via `complaint.own:read` + creator-OR. |
 | 7 | **Field Locking** | First-writer-wins ownership of designated fields with supervisor/admin override. |
-| 8 | **Assignment** | Single-department assignment, with full assignment history. |
+| 8 | **Assignment** | Single-department assignment with full assignment history; assignee must be an active member of the target department. |
 | 9 | **Attachments** | Up to 3 files × 2 MB each per complaint, stored as `bytea`. |
 | 10 | **Audit** | Append-only log of every field change across complaint records. |
-| 11 | **Dashboard** | Aggregated counts/breakdowns for supervisor/manager/admin. |
+| 11 | **Dashboard** | Aggregated counts/breakdowns. `dashboard:read` sees everything; `dashboard.own:read` scopes to the caller's active department memberships. |
 | 12 | **Admin** | Endpoints/views to manage users, roles, permissions, fields, departments, settings. |
-| 13 | **Notifications** *(scaffold only)* | Pluggable transport (email/webhook); event-driven. |
+| 13 | **Branding** | Single-row `branding_assets` table for the logo + `branding.*` keys in `system_settings`. Public `/api/branding` (no auth) drives the login page; admin upload/replace/clear under `/api/admin/branding`. |
+| 14 | **Notifications** *(scaffold only)* | Pluggable transport (email/webhook); event-driven. |
 
 ## Cross-cutting concerns
 
@@ -53,6 +54,7 @@ Only NGINX exposes ports to the host. The backend and frontend are unreachable f
 - **Logging:** Pino structured logs with request-id correlation.
 - **Security headers:** `helmet`, strict CSP at NGINX, HSTS once cert is real.
 - **Rate limiting:** `@nestjs/throttler` on auth endpoints, NGINX rate limit zones for global.
+- **Frontend stack:** Tailwind v4 with semantic CSS-variable tokens (`@theme` block) — re-skin via the `:root` block in `frontend/src/styles.css`. Icons via `lucide-react`. Modal/toast motion via the `motion` package (Framer Motion successor). Composable button-as-link via `@radix-ui/react-slot`.
 
 ## Authentication flow
 
@@ -71,6 +73,9 @@ The `IAuthProvider` interface lets us swap local-auth for LDAP without touching 
 - **User** has 0..N roles. Effective permissions = union of roles' permissions.
 - Field-level access is encoded as permissions of the form `complaint.field:<field_key>` with actions `read | write | override`.
 - Override on a locked field is a separate permission so that a supervisor *role* can be configured per deployment.
+- **Visibility scope** has two tiers:
+  - `complaint:read` / `dashboard:read` → full visibility (admin / manager).
+  - `complaint.own:read` / `dashboard.own:read` → narrowed to the caller's active department memberships, plus complaints they created (`created_by = me`). The list endpoint applies the scope server-side; detail returns 404 (not 403) for cross-dept reads to avoid leaking existence.
 
 See `skills/rbac.skill.md`.
 

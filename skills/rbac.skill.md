@@ -95,9 +95,41 @@ then re-close. Each step lands a distinct audit row (the reopen as
 The permission is seeded only on the `admin` role; admins can extend it to
 supervisor (or any custom role) via the permission grid.
 
-### Owner-scoped permissions
+### Visibility scope (department-aware reads)
 
-Some permissions are conditional on ownership (e.g. an employee can update their *own* complaints but not others). RBAC does not model ownership directly; the service layer enforces it after the permission check:
+Two read tiers exist for complaints and dashboard:
+
+| Permission | Effect |
+|---|---|
+| `complaint:read` / `dashboard:read` | Full visibility. Default for `admin` + `manager`. |
+| `complaint.own:read` / `dashboard.own:read` | Narrowed to `assigned_department_id IN (caller.departmentIds)` **OR** `created_by = caller.id` (creator-always-sees). Default for `supervisor` + `employee`. |
+
+The broader `:read` always wins — granting an admin `:own:read` is harmless. The list path applies the scope as a single SQL clause:
+
+```ts
+private applyVisibilityScope(qb, actor) {
+  if (actor.permissions.has('complaint:read')) return;
+  const depts = actor.departmentIds ?? [];
+  if (depts.length > 0) {
+    qb.andWhere(
+      '(c.assigned_department_id IN (:...scopeDepts) OR c.created_by = :scopeMe)',
+      { scopeDepts: depts, scopeMe: String(actor.id) },
+    );
+  } else {
+    qb.andWhere('c.created_by = :scopeMe', { scopeMe: String(actor.id) });
+  }
+}
+```
+
+The detail endpoint guards the same way but throws **`NotFoundException`** rather than `ForbiddenException` — leaking "this id exists in another department" is itself an information leak. The mutate endpoints (`update`, `setStatus`, `setPriority`, `assign`) acquire the row lock first, then call the same `assertVisible(complaint, actor)` check inside the transaction.
+
+### Assignment requires department membership
+
+`AssignmentsService.apply()` rejects an assignee who isn't an active member of the target department (`USER_NOT_IN_DEPARTMENT`). Without this check, an admin could assign a user to a department they can't see — the assignee would lose visibility immediately. The frontend cascade picker (department → assignee) loads only `?departmentId=…&isActive=true` so invalid options never appear in the dropdown.
+
+### Other owner-scoped permissions
+
+Beyond the visibility-scope pattern above, other ownership constraints live in the service after the permission check:
 
 ```ts
 this.rbac.assertPermission(actor, 'complaint:update');

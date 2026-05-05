@@ -28,11 +28,24 @@ Frontend hot-reload and backend hot-reload are configured via the dev compose ov
 | `backend/src/database/` | TypeORM datasource, transaction helpers |
 | `backend/src/modules/<feature>/` | One folder per feature module: controller, service, dto, entity |
 | `frontend/src/pages/` | Top-level routes |
-| `frontend/src/components/` | Reusable UI |
+| `frontend/src/layouts/AppLayout.tsx` | Dark-sidebar app shell (collapsible) — reads `useBranding()` for the logo + system name |
+| `frontend/src/components/ui/` | Tailwind-based primitives (Button, Card, Modal, Input, Select, Badge, …) |
+| `frontend/src/components/` | Domain components (DynamicFieldRenderer, AssignmentDialog, …) |
 | `frontend/src/services/` | API clients (one file per backend module) |
-| `frontend/src/hooks/` | Reusable hooks (auth, permissions, fetch wrappers) |
+| `frontend/src/hooks/` | Reusable hooks — `useBranding`, `usePermissions`, etc. |
+| `frontend/src/styles.css` | Tailwind v4 entry: `@theme` block + `:root` palette + `@layer components` (the editorial design tokens). Re-skin by editing `:root`. |
+| `frontend/src/lib/utils.ts` | `cn()` helper (`clsx` + `tailwind-merge`) |
 | `db/migrations/` | Numbered SQL files — **the** source of truth for schema |
 | `skills/` | Reusable design patterns referenced from code |
+
+### Frontend stack at a glance
+
+- **React 18** + **Vite 5** + **TypeScript** (strict).
+- **Tailwind v4** via `@tailwindcss/vite`. Tokens are CSS variables wired through the `@theme` block; component classes (`.card`, `.badge`, `.toolbar`, `.modal`, …) live in `@layer components`.
+- **lucide-react** for icons.
+- **motion** (Framer Motion successor) for modal/toast enter-exit.
+- **@radix-ui/react-slot** so `<Button asChild>` can project styles onto router `<Link>` and other elements.
+- **TanStack Query** for server state; **Zustand** with `persist` for the auth session.
 
 ## Conventions
 
@@ -143,6 +156,12 @@ pnpm build
 |---|---|
 | "How does login work?" | `skills/authentication.skill.md`, `modules/auth/` |
 | "How do permissions resolve?" | `skills/rbac.skill.md`, `common/guards/permissions.guard.ts` |
+| "How is read scope narrowed by department?" | `skills/rbac.skill.md` (Visibility scope), `modules/complaints/complaints.service.ts` `applyVisibilityScope()` |
+| "Where do user departments live?" | `modules/auth/entities/user-department.entity.ts`, migration `0017_user_departments_multi.sql` |
 | "Why is this field locked?" | `skills/field-locking.skill.md`, `modules/complaints/locking.service.ts` |
+| "How is the dynamic-field validation extended?" | `skills/dynamic-form.skill.md`, `modules/dynamic-fields/validate-values.ts` |
+| "How does the searchable filter work?" | `modules/complaints/complaints.service.ts` (`?fv[<key>]=` → EXISTS subquery) |
 | "How is audit captured?" | `skills/audit.skill.md`, `modules/audit/` |
 | "How do attachments work?" | `skills/file-upload.skill.md`, `modules/attachments/` |
+| "Where does the branding come from?" | `modules/branding/`, `frontend/src/hooks/useBranding.ts`, `frontend/src/services/branding.service.ts` |
+| "How do I re-skin the UI?" | Edit the `:root` block in `frontend/src/styles.css`. Tailwind utilities (`bg-primary`, `text-text-muted`, …) resolve through the `@theme` mapping. |

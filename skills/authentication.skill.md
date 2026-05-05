@@ -21,10 +21,20 @@ type AuthUser = {
   id: number;
   username: string;
   displayName: string;
+  /** Primary / "home" department, used to default form pickers + dashboard
+   *  scope label. Null for users without a primary (admins/managers who
+   *  span departments). */
+  departmentId: string | null;
+  /** Every active department the user belongs to. Drives `*.own:read`
+   *  scoping in complaints + dashboard. Empty for users with no
+   *  memberships. */
+  departmentIds: string[];
   roleKeys: string[];
   permissions: Set<string>;   // resource:action
 };
 ```
+
+`departmentIds` is computed at materialise time from `user_departments WHERE is_active = TRUE`. Like `permissions`, it's frozen into the `AuthUser` snapshot so per-request scope checks are O(1) — changes to a user's memberships don't take effect until the next access-token refresh (or `/auth/me` re-materialise).
 
 ## Logic
 

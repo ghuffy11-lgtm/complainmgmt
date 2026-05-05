@@ -66,7 +66,7 @@ The current `main` includes work from the post-handover phase:
 | [docs/01-architecture.md](docs/01-architecture.md) | System architecture & module map |
 | [docs/02-database-schema.md](docs/02-database-schema.md) | Full ER model & table definitions (current) |
 | [docs/03-api-design.md](docs/03-api-design.md) | REST endpoints & contracts (current) |
-| [docs/04-deployment-guide.md](docs/04-deployment-guide.md) | Production deploy + TLS (older — see runbook below for the IP-only path) |
+| [docs/04-deployment-guide.md](docs/04-deployment-guide.md) | Operations playbook — logs, backups, schema migrations on a running cluster, secret rotation, scaling, audit-table privilege split |
 | [docs/05-admin-user-guide.md](docs/05-admin-user-guide.md) | Operating the admin panel (current) |
 | [docs/06-developer-onboarding.md](docs/06-developer-onboarding.md) | Local setup, conventions |
 | [docs/07-roadmap.md](docs/07-roadmap.md) | Phased delivery plan |

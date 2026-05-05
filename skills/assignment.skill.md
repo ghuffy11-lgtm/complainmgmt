@@ -44,12 +44,14 @@ The history row is written in the same transaction as the `complaints` update. I
 ### Validation
 
 - Department must exist and be `is_active = true`.
-- User (when supplied) must exist, be `is_active = true`. We do **not** require the user to belong to a specific department (departments are assignment targets, not user attributes in this schema). If you want department membership enforced, that's a future scope decision and lives in `users.department_id`.
+- User (when supplied) must exist, be `is_active = true`, **and be an active member of the target department** (`user_departments WHERE is_active = TRUE`). Otherwise the assignment is rejected with `400 USER_NOT_IN_DEPARTMENT`. Without this, an admin could assign a user to a department they can't see — `complaint.own:read` would hide the very complaint they were just given.
 - `userId` may be `null` to assign to a department without a specific owner — useful for queues.
+
+The frontend cascade picker reflects the same rule: pick the department first, then the assignee dropdown loads with `GET /users?departmentId=<id>&isActive=true` so invalid choices never appear. Backend validation is defence-in-depth, not the sole gate.
 
 ### Initial assignment on create
 
-When a complaint is created with `departmentId` in the request body, `ComplaintsService.create` calls `AssignmentService.assignInitial` *before commit*, producing a single audit row + a single assignment-history row.
+`departmentId` is **mandatory** at create — every complaint enters the system already routed. `ComplaintsService.create` calls `AssignmentService.apply` *before commit*, producing a single audit row + a single assignment-history row. `assignedTo` is optional on create and follows the same membership-check rule as reassignment.
 
 ### Audit interaction
 

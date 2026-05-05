@@ -10,10 +10,23 @@ top-10 category. It's living documentation; update on every release.
 
 - Every authenticated route is wrapped by `JwtAuthGuard` (registered as
   `APP_GUARD`). `@Public()` is opt-in for `/auth/login`, `/auth/refresh`,
-  `/auth/logout`, `/health`.
+  `/auth/logout`, `/health`, and the public branding endpoints
+  (`/branding`, `/branding/logo`) — the latter must be reachable before
+  sign-in so the login page can render the org's logo + system name.
 - `PermissionsGuard` (also `APP_GUARD`) reads `@RequirePermissions` /
   `@RequireAnyPermission` metadata. Wildcards are honoured by the resolver
   (`complaint.field:*:write`).
+- **Department-scoped reads.** `complaint.own:read` and
+  `dashboard.own:read` narrow what supervisors and employees see to
+  complaints in their active department memberships **OR** complaints
+  they created. Enforced server-side: the list endpoint adds an
+  `IN (:depts) OR created_by = :me` clause; detail returns **404 (not
+  403)** to avoid leaking existence of cross-dept rows. Admin and
+  manager hold the broader `complaint:read` / `dashboard:read` and skip
+  the scope.
+- **Assignment validation.** A user can only be assigned to a complaint
+  in a department they're an active member of (`USER_NOT_IN_DEPARTMENT`,
+  enforced by both the assignment dialog cascade and the backend).
 - **Per-field write checks live in the service**, not the route, so dynamic
   field keys are honoured (admin can add fields without code changes).
 - **Locking** prevents non-owners from overwriting designated fields without
@@ -24,11 +37,14 @@ top-10 category. It's living documentation; update on every release.
   individual fields.
 - Test coverage: `local-auth.provider.spec.ts`, `permissions.guard.spec.ts`,
   `locking.service.spec.ts`, plus e2e flow `complaint-flow.e2e-spec.ts`.
+  The smoke test (`scripts/smoke-test.sh`) exercises the scope rules
+  end-to-end via the employee user it provisions.
 
-**Residual risks:** ownership-scoped permissions (e.g. "employee can update
-their *own* complaints only") are enforced in the service via explicit
-`if (created_by !== actor.id)` checks. Adding a new such constraint requires
-discipline; document each in the relevant skill file.
+**Residual risks:** scope changes don't apply until the next access-token
+refresh (≤ JWT TTL, default 15 min) — admin permission/role/membership
+changes that need to take effect *now* require the admin to revoke the
+user's refresh tokens (UsersService already does this on role change and
+deactivation).
 
 ## A02 — Cryptographic Failures ✅
 
@@ -56,7 +72,11 @@ Plan: move to a managed secrets store (Vault / AWS SM) post-1.0.
   before persistence (text/number/date/dropdown); whitelisted-key check
   prevents schema-skew injection.
 - Filename sanitization strips path components and control chars; MIME is
-  sniffed server-side (client `Content-Type` is ignored).
+  sniffed server-side (client `Content-Type` is ignored). The branding
+  logo upload uses the same sniffer with a stricter allow-list
+  (PNG/JPEG/WebP/SVG, 512 KB cap); SVG can't be sniffed from magic bytes
+  so it's gated by a leading-`<svg>`/`<?xml>` check before accepting the
+  declared MIME.
 - No template engines; no shell-outs from request handlers; no `eval`.
 
 ## A04 — Insecure Design 🟡
