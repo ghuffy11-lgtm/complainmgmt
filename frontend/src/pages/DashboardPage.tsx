@@ -26,22 +26,33 @@ const WINDOWS = [
   { label: '1 year',  days: 365 },
 ];
 
+// Recharts can't read CSS variables directly — colours are baked in at
+// render time. Keep these in sync with styles.css if the palette shifts.
+const ACCENT     = 'hsl(185, 55%, 38%)';   // teal (--accent)
+const SUCCESS    = 'hsl(152, 55%, 35%)';
+const WARN       = 'hsl(38, 85%, 48%)';
+const DANGER     = 'hsl(0, 70%, 45%)';
+const SLATE_500  = 'hsl(215, 15%, 50%)';
+const SLATE_300  = 'hsl(215, 15%, 70%)';
+const GRID       = 'hsl(215, 20%, 88%)';   // --border
+
 const STATUS_COLORS: Record<string, string> = {
-  open:        '#2563eb',
-  in_progress: '#b45309',
-  resolved:    '#047857',
-  closed:      '#6b7280',
-  rejected:    '#b91c1c',
+  open:        ACCENT,
+  in_progress: WARN,
+  resolved:    SUCCESS,
+  closed:      SLATE_500,
+  rejected:    DANGER,
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low:      '#9ca3af',
-  normal:   '#2563eb',
-  high:     '#b45309',
-  critical: '#b91c1c',
+  low:      SLATE_300,
+  normal:   ACCENT,
+  high:     WARN,
+  critical: DANGER,
 };
 
-const AGING_COLORS = ['#10b981', '#f59e0b', '#ef4444', '#7c2d12'];
+// Aging buckets get progressively warmer as complaints get older.
+const AGING_COLORS = [SUCCESS, WARN, DANGER, 'hsl(0, 70%, 30%)'];
 
 export function DashboardPage() {
   const { has, user } = usePermissions();
@@ -140,7 +151,7 @@ function ManagerDashboard() {
           data={(statusQ.data ?? []).map((r) => ({
             name: r.status.replace('_', ' '),
             value: r.count,
-            color: STATUS_COLORS[r.status] ?? '#6b7280',
+            color: STATUS_COLORS[r.status] ?? SLATE_500,
             link: `/complaints?status=${encodeURIComponent(r.status)}`,
           }))}
           loading={statusQ.isLoading}
@@ -149,7 +160,7 @@ function ManagerDashboard() {
           title="By priority"
           data={(priorityQ.data ?? []).map((r) => ({
             key: r.priority, count: r.count,
-            color: PRIORITY_COLORS[r.priority] ?? '#6b7280',
+            color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
             link: `/complaints?priority=${encodeURIComponent(r.priority)}`,
           }))}
           loading={priorityQ.isLoading}
@@ -246,7 +257,7 @@ function UserDashboard() {
           data={(statusQ.data ?? []).map((r) => ({
             name: r.status.replace('_', ' '),
             value: r.count,
-            color: STATUS_COLORS[r.status] ?? '#6b7280',
+            color: STATUS_COLORS[r.status] ?? SLATE_500,
             link: `${linkBase}&status=${encodeURIComponent(r.status)}`,
           }))}
           loading={statusQ.isLoading}
@@ -255,7 +266,7 @@ function UserDashboard() {
           title="By priority"
           data={(priorityQ.data ?? []).map((r) => ({
             key: r.priority, count: r.count,
-            color: PRIORITY_COLORS[r.priority] ?? '#6b7280',
+            color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
             link: `${linkBase}&priority=${encodeURIComponent(r.priority)}`,
           }))}
           loading={priorityQ.isLoading}
@@ -298,13 +309,22 @@ function useZeroFilledTrend(raw: { date: string; count: number }[] | undefined, 
 function Kpi({
   label, value, sub, emphasis,
 }: { label: string; value: number | string; sub?: string; emphasis?: 'primary' | 'warn' }) {
+  // Use the teal accent for KPI emphasis — the slate primary doesn't pop
+  // at 32px on a white card.
   const accent =
-    emphasis === 'primary' ? 'var(--primary)' :
+    emphasis === 'primary' ? 'var(--accent)' :
     emphasis === 'warn'    ? 'var(--warn)'    : 'var(--text)';
   return (
     <div className="card">
-      <div className="muted" style={{ fontSize: 13 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 600, marginTop: 4, color: accent }}>{value}</div>
+      <div className="muted" style={{ fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {label}
+      </div>
+      <div
+        className="tabular-nums"
+        style={{ fontSize: 32, fontWeight: 600, marginTop: 6, color: accent, letterSpacing: '-0.01em' }}
+      >
+        {value}
+      </div>
       {sub && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{sub}</div>}
     </div>
   );
@@ -389,15 +409,15 @@ function TrendChart({ data }: { data: { date: string; count: number }[] }) {
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#2563eb" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+            <stop offset="0%"   stopColor={ACCENT} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} interval="preserveStartEnd" minTickGap={40} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b7280' }} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+        <XAxis dataKey="date" tick={{ fontSize: 11, fill: SLATE_500 }} interval="preserveStartEnd" minTickGap={40} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />
         <Tooltip />
-        <Area type="monotone" dataKey="count" stroke="#2563eb" fill="url(#trendFill)" strokeWidth={2} />
+        <Area type="monotone" dataKey="count" stroke={ACCENT} fill="url(#trendFill)" strokeWidth={2} />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -414,14 +434,14 @@ function LatencyDetail({ data }: { data: NonNullable<Awaited<ReturnType<typeof D
       </div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data.perWeek} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#6b7280' }} />
-          <YAxis yAxisId="count" allowDecimals={false} tick={{ fontSize: 11, fill: '#6b7280' }} />
-          <YAxis yAxisId="hours" orientation="right" tick={{ fontSize: 11, fill: '#6b7280' }} />
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+          <XAxis dataKey="week" tick={{ fontSize: 11, fill: SLATE_500 }} />
+          <YAxis yAxisId="count" allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />
+          <YAxis yAxisId="hours" orientation="right" tick={{ fontSize: 11, fill: SLATE_500 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar yAxisId="count" dataKey="count"    name="Resolutions" fill="#2563eb" />
-          <Bar yAxisId="hours" dataKey="avgHours" name="Avg hours"   fill="#b45309" />
+          <Bar yAxisId="count" dataKey="count"    name="Resolutions" fill={ACCENT} />
+          <Bar yAxisId="hours" dataKey="avgHours" name="Avg hours"   fill={WARN} />
         </BarChart>
       </ResponsiveContainer>
     </>
@@ -506,16 +526,16 @@ function BarPanel({
               layout={horizontal ? 'vertical' : 'horizontal'}
               margin={{ top: 8, right: 8, left: horizontal ? 0 : -12, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
               {horizontal
-                ? <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#6b7280' }} />
-                : <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#6b7280' }} interval={0} />}
+                ? <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />
+                : <XAxis dataKey="key" tick={{ fontSize: 11, fill: SLATE_500 }} interval={0} />}
               {horizontal
-                ? <YAxis type="category" dataKey="key" width={120} tick={{ fontSize: 11, fill: '#6b7280' }} />
-                : <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b7280' }} />}
+                ? <YAxis type="category" dataKey="key" width={120} tick={{ fontSize: 11, fill: SLATE_500 }} />
+                : <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />}
               <Tooltip />
-              <Bar dataKey="count" fill="#2563eb">
-                {data.map((d, i) => <Cell key={i} fill={d.color ?? '#2563eb'} />)}
+              <Bar dataKey="count" fill={ACCENT}>
+                {data.map((d, i) => <Cell key={i} fill={d.color ?? ACCENT} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -525,13 +545,13 @@ function BarPanel({
                 <li key={d.key}>
                   {d.link ? (
                     <Link to={d.link} style={legendItemStyle}>
-                      <Dot color={d.color ?? '#2563eb'} />
+                      <Dot color={d.color ?? ACCENT} />
                       <span style={{ flex: 1 }}>{d.key}</span>
                       <span className="mono muted">{d.count}</span>
                     </Link>
                   ) : (
                     <div style={legendItemStyle}>
-                      <Dot color={d.color ?? '#2563eb'} />
+                      <Dot color={d.color ?? ACCENT} />
                       <span style={{ flex: 1 }}>{d.key}</span>
                       <span className="mono muted">{d.count}</span>
                     </div>

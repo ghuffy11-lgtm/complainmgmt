@@ -8,50 +8,70 @@
 *::after { box-sizing: border-box; }
 
 :root {
-  /* ─── color palette (slate-tuned, cooler than gray-500) ────────── */
-  --bg:               #f5f7fa;
-  --bg-accent:        #eef2f7;
-  --surface:          #ffffff;
-  --surface-2:        #f8fafc;
-  --surface-hover:    #f1f5f9;
-  --border:           #e2e8f0;
-  --border-strong:    #cbd5e1;
+  /* ─── color palette ─────────────────────────────────────────────────
+     Clinical slate + teal palette, ported from the Lovable theme spec.
+     Variable *names* are unchanged — values were retuned to a calmer,
+     hospital-tool feel. The accent (teal) takes over the role of
+     "highlights / status" while the primary (deep slate) anchors
+     buttons + sidebar + brand. */
 
-  --text:             #0f172a;
-  --text-muted:       #64748b;
-  --text-subtle:      #94a3b8;
-  --text-on-primary:  #ffffff;
+  --bg:               hsl(210 20% 98%);
+  --bg-accent:        hsl(210 25% 96%);
+  --surface:          hsl(0 0% 100%);
+  --surface-2:        hsl(210 25% 96%);
+  --surface-hover:    hsl(210 22% 94%);
+  --border:           hsl(215 20% 88%);
+  --border-strong:    hsl(215 18% 78%);
 
-  --primary:          #2563eb;
-  --primary-hover:    #1d4ed8;
-  --primary-active:   #1e40af;
-  --primary-bg:       #eff6ff;
-  --primary-border:   #bfdbfe;
+  --text:             hsl(215 28% 17%);
+  --text-muted:       hsl(215 15% 45%);
+  --text-subtle:      hsl(215 12% 60%);
+  --text-on-primary:  hsl(210 20% 98%);
 
-  --danger:           #dc2626;
-  --danger-hover:     #b91c1c;
-  --danger-bg:        #fef2f2;
-  --danger-border:    #fecaca;
+  /* Primary = deep slate. Calm, anchored, professional. */
+  --primary:          hsl(215 45% 22%);
+  --primary-hover:    hsl(215 45% 28%);
+  --primary-active:   hsl(215 50% 18%);
+  --primary-bg:       hsl(215 45% 96%);
+  --primary-border:   hsl(215 35% 86%);
 
-  --warn:             #d97706;
-  --warn-bg:          #fffbeb;
-  --warn-border:      #fde68a;
+  /* Accent = teal. Used for sidebar highlights, status badges, focus glow,
+     KPI emphasis. Aliased through the existing --primary-* tokens by
+     callers that want the "blue" feel — see component overrides below. */
+  --accent:           hsl(185 55% 38%);
+  --accent-hover:     hsl(185 55% 32%);
+  --accent-bg:        hsl(185 50% 95%);
+  --accent-border:    hsl(185 40% 80%);
+  --accent-fg:        hsl(0 0% 100%);
 
-  --success:          #059669;
-  --success-bg:       #ecfdf5;
-  --success-border:   #a7f3d0;
+  --danger:           hsl(0 70% 45%);
+  --danger-hover:     hsl(0 72% 38%);
+  --danger-bg:        hsl(0 70% 96%);
+  --danger-border:    hsl(0 60% 88%);
 
-  /* sidebar (deep slate, not pure gray) */
-  --sidebar:          #0f172a;
-  --sidebar-2:        #1e293b;
-  --sidebar-text:     #e2e8f0;
-  --sidebar-text-muted: #94a3b8;
-  --sidebar-accent:   #60a5fa;
+  --warn:             hsl(38 85% 48%);
+  --warn-bg:          hsl(38 90% 95%);
+  --warn-border:      hsl(38 70% 82%);
+
+  --success:          hsl(152 55% 35%);
+  --success-bg:       hsl(152 50% 95%);
+  --success-border:   hsl(152 40% 80%);
+
+  /* sidebar — separate, hospital-tool feel */
+  --sidebar:          hsl(215 35% 16%);
+  --sidebar-2:        hsl(215 30% 22%);
+  --sidebar-text:     hsl(210 20% 88%);
+  --sidebar-text-muted: hsl(210 15% 65%);
+  --sidebar-accent:   hsl(185 55% 50%);
 
   /* ─── typography ──────────────────────────────────────────────── */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+  /* Inter for UI, IBM Plex Mono for tabular numerals + code. Loaded via
+     <link> in index.html for proper preconnect; falls back to system
+     stacks if the network is unavailable. */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
                "Helvetica Neue", Arial, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
 
   --text-xs:   12px;
   --text-sm:   13px;
@@ -89,7 +109,13 @@
   --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition:      180ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  /* Focus ring uses the teal accent so it stands out against the slate
+     primary — keyboard focus is visually distinct from a "selected"
+     primary surface. */
+  --focus-ring: 0 0 0 3px hsl(185 55% 38% / 0.25);
+
+  /* Layout helpers */
+  --reading-max: 720px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -104,9 +130,10 @@ body {
   font-size: var(--text-base);
   line-height: 1.5;
   color: var(--text);
+  /* Restrained ambient wash — slate at the corners, no chroma. */
   background:
-    radial-gradient(ellipse at 0% 0%, rgba(37,99,235,0.04), transparent 40%),
-    radial-gradient(ellipse at 100% 100%, rgba(37,99,235,0.03), transparent 40%),
+    radial-gradient(ellipse at 0% 0%, hsl(215 35% 16% / 0.03), transparent 45%),
+    radial-gradient(ellipse at 100% 100%, hsl(185 55% 38% / 0.03), transparent 45%),
     var(--bg);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
@@ -228,7 +255,35 @@ input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; }
 .subtle  { color: var(--text-subtle); }
 .danger  { color: var(--danger); }
 .right   { text-align: right; }
-.mono    { font-family: var(--font-mono); font-size: 0.92em; }
+.mono    { font-family: var(--font-mono); font-size: 0.92em; font-variant-numeric: tabular-nums; }
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* ─── login (two-pane layout) ────────────────────────────────────
+   Single column on narrow viewports; brand panel + form panel at ≥960px. */
+.login-grid {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+.login-brand {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(180deg, var(--sidebar) 0%, var(--sidebar-2) 100%);
+  color: var(--sidebar-text);
+  padding: 40px 48px;
+}
+.login-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 48px 24px;
+}
+@media (min-width: 960px) {
+  .login-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .login-brand { display: flex; }
+}
 .spacer  { flex: 1; }
 .hidden  { display: none; }
 
