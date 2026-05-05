@@ -19,6 +19,7 @@ import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { BrandingModule } from './modules/branding/branding.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DisplayNamesModule } from './modules/display-names/display-names.module';
 
@@ -50,6 +51,7 @@ import { DisplayNamesModule } from './modules/display-names/display-names.module
     AuditModule,
     DashboardModule,
     AdminModule,
+    BrandingModule,
     NotificationsModule,
     DisplayNamesModule,
   ],

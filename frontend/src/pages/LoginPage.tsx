@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { AuthService } from '../services/auth.service';
 import { useAuthStore } from '../store/auth-store';
+import { useBranding } from '../hooks/useBranding';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -19,6 +20,13 @@ export function LoginPage() {
   const setSession = useAuthStore((s) => s.setSession);
   const nav = useNavigate();
   const location = useLocation() as { state?: { from?: { pathname: string } } };
+  const branding = useBranding();
+
+  // Reflect the system name in the browser tab. Useful as a freebie for
+  // anyone with multiple CTS-style tabs open.
+  React.useEffect(() => {
+    document.title = branding.systemName;
+  }, [branding.systemName]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,21 +60,31 @@ export function LoginPage() {
       <div className="w-full max-w-[400px] relative z-10">
         <div className="flex flex-col items-center mb-8 text-center">
           <div
-            className="w-16 h-16 rounded-2xl text-white shadow-lg mb-4 flex items-center justify-center"
+            className="w-16 h-16 rounded-2xl text-white shadow-lg mb-4 flex items-center justify-center overflow-hidden"
             style={{
-              background: 'linear-gradient(135deg, var(--primary), var(--primary-active))',
+              background: branding.logoUrl
+                ? 'var(--surface)'
+                : 'linear-gradient(135deg, var(--primary), var(--primary-active))',
               boxShadow: '0 0 0 8px rgb(37 99 235 / 0.05), 0 10px 25px rgb(15 23 42 / 0.10)',
             }}
           >
-            <ShieldCheck size={36} strokeWidth={1.5} />
+            {branding.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt={branding.organizationName}
+                className="w-full h-full object-contain p-1.5"
+              />
+            ) : (
+              <ShieldCheck size={36} strokeWidth={1.5} />
+            )}
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">
-            Complaint Tracking
+            {branding.systemName}
             <span className="block text-sm font-medium text-text-muted mt-1">
-              Hadi Clinic · Quality &amp; Patient Safety
+              {branding.organizationName} · {branding.loginSubtitle}
             </span>
           </h1>
-          <p className="text-text-muted mt-2 text-sm">Sign in to continue to the portal</p>
+          <p className="text-text-muted mt-2 text-sm">{branding.loginTagline}</p>
         </div>
 
         <Card className="p-8 shadow-xl">
@@ -111,7 +129,7 @@ export function LoginPage() {
         </Card>
 
         <footer className="mt-8 text-center text-text-subtle text-xs">
-          Hadi Clinic · Internal use only
+          {branding.organizationName} · {branding.footerText}
         </footer>
       </div>
     </div>

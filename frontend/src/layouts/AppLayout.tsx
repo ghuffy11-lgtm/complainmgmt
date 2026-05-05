@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/auth-store';
 import { usePermissions } from '../hooks/usePermissions';
+import { useBranding } from '../hooks/useBranding';
 import { AuthService } from '../services/auth.service';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -57,6 +58,7 @@ export function AppLayout() {
   const refreshToken = useAuthStore((s) => s.refreshToken);
   const clear = useAuthStore((s) => s.clear);
   const { hasAny } = usePermissions();
+  const branding = useBranding();
   const nav = useNavigate();
   const [pwOpen, setPwOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
@@ -67,6 +69,10 @@ export function AppLayout() {
   React.useEffect(() => {
     window.localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
+
+  React.useEffect(() => {
+    document.title = branding.systemName;
+  }, [branding.systemName]);
 
   const handleLogout = async () => {
     if (refreshToken) await AuthService.logout(refreshToken).catch(() => undefined);
@@ -97,16 +103,26 @@ export function AppLayout() {
         <Link
           to="/"
           className="px-4 py-5 flex items-center gap-3 border-b border-sidebar-2 hover:bg-sidebar-2/40"
-          title="Complaint Tracking"
+          title={branding.systemName}
         >
-          <span className="w-9 h-9 rounded-lg bg-sidebar-accent/15 text-sidebar-accent inline-flex items-center justify-center shrink-0">
-            <ShieldCheck size={20} />
+          <span className="w-9 h-9 rounded-lg bg-sidebar-accent/15 text-sidebar-accent inline-flex items-center justify-center shrink-0 overflow-hidden">
+            {branding.logoUrl ? (
+              <img
+                src={branding.logoUrl}
+                alt={branding.organizationName}
+                className="w-full h-full object-contain p-1"
+              />
+            ) : (
+              <ShieldCheck size={20} />
+            )}
           </span>
           {!collapsed && (
             <span className="flex flex-col leading-tight min-w-0">
-              <span className="text-[15px] font-semibold text-white truncate">CTS</span>
+              <span className="text-[15px] font-semibold text-white truncate">
+                {branding.systemShortName}
+              </span>
               <span className="text-[10px] uppercase tracking-widest text-sidebar-text-muted font-semibold">
-                Complaint Tracking
+                {branding.systemName}
               </span>
             </span>
           )}
@@ -188,7 +204,9 @@ export function AppLayout() {
             <span className="px-2.5 py-0.5 rounded-full bg-primary-bg text-primary text-[10px] font-bold uppercase tracking-wider border border-primary-border">
               Operational
             </span>
-            <span className="hidden sm:inline text-text-subtle text-xs">Hadi Clinic CTS</span>
+            <span className="hidden sm:inline text-text-subtle text-xs">
+              {branding.organizationName} {branding.systemShortName}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -208,8 +226,8 @@ export function AppLayout() {
         </main>
 
         <footer className="border-t border-border py-3 px-6 flex justify-between items-center bg-surface text-[11px] text-text-subtle">
-          <span>Hadi Clinic · Internal use only · Access logged</span>
-          <span className="font-mono">CTS</span>
+          <span>{branding.organizationName} · {branding.footerText}</span>
+          <span className="font-mono">{branding.systemShortName}</span>
         </footer>
       </div>
 
