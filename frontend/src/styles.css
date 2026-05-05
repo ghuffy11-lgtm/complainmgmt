@@ -1,265 +1,224 @@
-/* ================================================================
-   Complaint Tracking System — design tokens + base styles.
-   Single source of styling truth; every page imports through main.tsx.
-   ================================================================ */
+@import "tailwindcss";
 
-*,
-*::before,
-*::after { box-sizing: border-box; }
+/* ─── design tokens ─────────────────────────────────────────────────────────
+ * Editorial palette. Tailwind v4 picks these up via the @theme block so
+ * utilities like `bg-primary`, `text-text-muted`, `border-border` resolve
+ * to the CSS variables defined in :root. To re-skin, change the :root
+ * values — the @theme mapping stays put.
+ * ─────────────────────────────────────────────────────────────────────── */
 
-:root {
-  /* ─── color palette ─────────────────────────────────────────────────
-     Clinical slate + teal palette, ported from the Lovable theme spec.
-     Variable *names* are unchanged — values were retuned to a calmer,
-     hospital-tool feel. The accent (teal) takes over the role of
-     "highlights / status" while the primary (deep slate) anchors
-     buttons + sidebar + brand. */
+@theme {
+  /* color → variable */
+  --color-bg: var(--bg);
+  --color-bg-accent: var(--bg-accent);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
 
-  --bg:               hsl(210 20% 98%);
-  --bg-accent:        hsl(210 25% 96%);
-  --surface:          hsl(0 0% 100%);
-  --surface-2:        hsl(210 25% 96%);
-  --surface-hover:    hsl(210 22% 94%);
-  --border:           hsl(215 20% 88%);
-  --border-strong:    hsl(215 18% 78%);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
 
-  --text:             hsl(215 28% 17%);
-  --text-muted:       hsl(215 15% 45%);
-  --text-subtle:      hsl(215 12% 60%);
-  --text-on-primary:  hsl(210 20% 98%);
+  --color-text-main: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-on-primary: var(--text-on-primary);
 
-  /* Primary = deep slate. Calm, anchored, professional. */
-  --primary:          hsl(215 45% 22%);
-  --primary-hover:    hsl(215 45% 28%);
-  --primary-active:   hsl(215 50% 18%);
-  --primary-bg:       hsl(215 45% 96%);
-  --primary-border:   hsl(215 35% 86%);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-bg: var(--primary-bg);
+  --color-primary-border: var(--primary-border);
 
-  /* Accent = teal. Used for sidebar highlights, status badges, focus glow,
-     KPI emphasis. Aliased through the existing --primary-* tokens by
-     callers that want the "blue" feel — see component overrides below. */
-  --accent:           hsl(185 55% 38%);
-  --accent-hover:     hsl(185 55% 32%);
-  --accent-bg:        hsl(185 50% 95%);
-  --accent-border:    hsl(185 40% 80%);
-  --accent-fg:        hsl(0 0% 100%);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
+  --color-danger-hover: var(--danger-hover);
 
-  --danger:           hsl(0 70% 45%);
-  --danger-hover:     hsl(0 72% 38%);
-  --danger-bg:        hsl(0 70% 96%);
-  --danger-border:    hsl(0 60% 88%);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-border: var(--warn-border);
 
-  --warn:             hsl(38 85% 48%);
-  --warn-bg:          hsl(38 90% 95%);
-  --warn-border:      hsl(38 70% 82%);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
 
-  --success:          hsl(152 55% 35%);
-  --success-bg:       hsl(152 50% 95%);
-  --success-border:   hsl(152 40% 80%);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-2: var(--sidebar-2);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-text-muted: var(--sidebar-text-muted);
+  --color-sidebar-accent: var(--sidebar-accent);
 
-  /* sidebar — separate, hospital-tool feel */
-  --sidebar:          hsl(215 35% 16%);
-  --sidebar-2:        hsl(215 30% 22%);
-  --sidebar-text:     hsl(210 20% 88%);
-  --sidebar-text-muted: hsl(210 15% 65%);
-  --sidebar-accent:   hsl(185 55% 50%);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* ─── typography ──────────────────────────────────────────────── */
-  /* Inter for UI, IBM Plex Mono for tabular numerals + code. Loaded via
-     <link> in index.html for proper preconnect; falls back to system
-     stacks if the network is unavailable. */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Helvetica Neue", Arial, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas,
-               "Liberation Mono", monospace;
-
-  --text-xs:   12px;
-  --text-sm:   13px;
-  --text-base: 14px;
-  --text-md:   15px;
-  --text-lg:   17px;
-  --text-xl:   20px;
-  --text-2xl:  26px;
-  --text-3xl:  32px;
-
-  /* ─── spacing scale (4-px base, also exposed as utility classes) */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-
-  /* ─── shape ──────────────────────────────────────────────────── */
-  --radius-sm:   4px;
-  --radius:      8px;
-  --radius-md:   10px;
-  --radius-lg:   12px;
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
 
-  /* ─── elevation ──────────────────────────────────────────────── */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow:    0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 6px rgba(15, 23, 42, 0.05), 0 2px 4px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.10), 0 4px 10px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 
-  /* ─── motion ─────────────────────────────────────────────────── */
-  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition:      180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Focus ring uses the teal accent so it stands out against the slate
-     primary — keyboard focus is visually distinct from a "selected"
-     primary surface. */
-  --focus-ring: 0 0 0 3px hsl(185 55% 38% / 0.25);
+  --animate-fade-in: fade-in 200ms ease-out;
+  --animate-slide-in-bottom: slide-in-bottom 300ms ease-out;
+  --animate-slide-in-right: slide-in-right 300ms ease-out;
 
-  /* Layout helpers */
-  --reading-max: 720px;
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-in-bottom {
+    from { transform: translate(-50%, 1rem); opacity: 0; }
+    to { transform: translate(-50%, -50%); opacity: 1; }
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(1rem); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; animation: none !important; }
+:root {
+  --bg: #f8fafc;
+  --bg-accent: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-hover: #f1f5f9;
+
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+  --text-on-primary: #ffffff;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-active: #1e40af;
+  --primary-bg: #eff6ff;
+  --primary-border: #bfdbfe;
+
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --danger-hover: #b91c1c;
+
+  --warn: #f59e0b;
+  --warn-bg: #fffbeb;
+  --warn-border: #fef3c7;
+
+  --success: #10b981;
+  --success-bg: #ecfdf5;
+  --success-border: #d1fae5;
+
+  --sidebar: #0f172a;
+  --sidebar-2: #1e293b;
+  --sidebar-text: #f8fafc;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-accent: #3b82f6;
+
+  --focus-ring: 0 0 0 2px #fff, 0 0 0 4px #2563eb;
 }
 
-/* ─── base ────────────────────────────────────────────────────── */
-html, body, #root { height: 100%; }
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: 1.5;
-  color: var(--text);
-  /* Restrained ambient wash — slate at the corners, no chroma. */
-  background:
-    radial-gradient(ellipse at 0% 0%, hsl(215 35% 16% / 0.03), transparent 45%),
-    radial-gradient(ellipse at 100% 100%, hsl(185 55% 38% / 0.03), transparent 45%),
-    var(--bg);
-  background-attachment: fixed;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { height: 100%; }
+
+  body {
+    @apply bg-bg text-text-main font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+
+  a { color: var(--primary); text-decoration: none; transition: color var(--transition-fast); }
+  a:hover { color: var(--primary-hover); text-decoration: underline; }
+
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 16px; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; font-weight: 600; margin: 24px 0 8px; letter-spacing: -0.005em; }
+  h3 { font-size: 17px; font-weight: 600; margin: 16px 0 8px; }
+
+  /* ─── bridge: element-level styles for not-yet-ported pages ───────────
+   * These match the editorial palette but use raw CSS so unported pages
+   * keep their semantic-table/form look during the migration. Each phase
+   * that touches a page replaces these defaults with utility classes; the
+   * cleanup phase prunes whatever's still unused. */
+
+  table {
+    width: 100%;
+    background: var(--surface);
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  th, td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+  }
+  th {
+    background: var(--surface-2);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  tbody tr { transition: background-color var(--transition-fast); }
+  tbody tr:hover { background: var(--surface-hover); }
+  tr:last-child td { border-bottom: none; }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  textarea,
+  select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 0.15);
+  }
+  textarea { resize: vertical; min-height: 80px; line-height: 1.45; }
+  input:disabled, textarea:disabled, select:disabled {
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+  input::placeholder, textarea::placeholder { color: var(--text-subtle); }
+  input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; }
+
+  button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(37 99 235 / 0.25); }
 }
 
-a { color: var(--primary); text-decoration: none; transition: color var(--transition-fast); }
-a:hover { color: var(--primary-hover); text-decoration: underline; }
-a:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
-
-h1 { font-size: var(--text-2xl); font-weight: 600; margin: 0 0 var(--space-4); letter-spacing: -0.01em; }
-h2 { font-size: var(--text-xl); font-weight: 600; margin: var(--space-6) 0 var(--space-2); letter-spacing: -0.005em; }
-h3 { font-size: var(--text-lg); font-weight: 600; margin: var(--space-4) 0 var(--space-2); }
-
-/* ─── tables ─────────────────────────────────────────────────── */
-table {
-  width: 100%;
-  background: var(--surface);
-  border-collapse: separate;
-  border-spacing: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-}
-th, td {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: middle;
-}
-th {
-  background: var(--surface-2);
-  font-weight: 600;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-tbody tr { transition: background-color var(--transition-fast); }
-tbody tr:hover { background: var(--surface-hover); }
-tr:last-child td { border-bottom: none; }
-
-/* ─── form primitives ────────────────────────────────────────── */
-.field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
-.field > label { font-weight: 500; font-size: var(--text-sm); color: var(--text); }
-.field > .hint { color: var(--text-muted); font-size: var(--text-xs); }
-.field > .err  { color: var(--danger); font-size: var(--text-xs); }
-
-input[type="text"],
-input[type="number"],
-input[type="date"],
-input[type="email"],
-input[type="password"],
-input[type="search"],
-textarea,
-select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--text-base);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-input:hover:not(:disabled),
-textarea:hover:not(:disabled),
-select:hover:not(:disabled) { border-color: var(--border-strong); }
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: var(--focus-ring);
-}
-textarea { resize: vertical; min-height: 80px; line-height: 1.45; }
-input:disabled, textarea:disabled, select:disabled {
-  background: var(--surface-2);
-  color: var(--text-muted);
-  cursor: not-allowed;
-}
-input::placeholder, textarea::placeholder { color: var(--text-subtle); }
-
-/* native checkbox alignment */
-input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; }
-
-/* ─── card / panel ───────────────────────────────────────────── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-5);
-  box-shadow: var(--shadow-sm);
-}
-
-/* ─── badges ─────────────────────────────────────────────────── */
-.badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  background: var(--surface-2);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-}
-.badge-primary { background: var(--primary-bg); color: var(--primary); border-color: var(--primary-border); }
-.badge-warn    { background: var(--warn-bg);    color: var(--warn);    border-color: var(--warn-border); }
-.badge-danger  { background: var(--danger-bg);  color: var(--danger);  border-color: var(--danger-border); }
-.badge-success { background: var(--success-bg); color: var(--success); border-color: var(--success-border); }
-
-/* ─── utilities ──────────────────────────────────────────────── */
-.row     { display: flex; gap: var(--space-3); align-items: center; }
-.row-end { display: flex; gap: var(--space-3); align-items: center; justify-content: flex-end; }
-.col     { display: flex; flex-direction: column; gap: var(--space-3); }
-.muted   { color: var(--text-muted); }
-.subtle  { color: var(--text-subtle); }
-.danger  { color: var(--danger); }
-.right   { text-align: right; }
-.mono    { font-family: var(--font-mono); font-size: 0.92em; font-variant-numeric: tabular-nums; }
-.tabular-nums { font-variant-numeric: tabular-nums; }
-
-/* ─── login (two-pane layout) ────────────────────────────────────
-   Single column on narrow viewports; brand panel + form panel at ≥960px. */
+/* ─── legacy compat (removed as pages are ported) ──────────────────────── */
 .login-grid {
   min-height: 100vh;
   display: grid;
@@ -284,116 +243,92 @@ input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; }
   .login-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .login-brand { display: flex; }
 }
-.spacer  { flex: 1; }
-.hidden  { display: none; }
 
-.toolbar {
-  display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;
-  margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-}
-.toolbar > .grow { flex: 1; }
+@layer components {
+  .card {
+    @apply bg-surface border border-border rounded-[10px] p-6 shadow-sm;
+  }
 
-/* ─── modal ──────────────────────────────────────────────────── */
-.backdrop {
-  position: fixed; inset: 0;
-  background: rgba(15, 23, 42, 0.55);
-  backdrop-filter: blur(2px);
-  display: grid; place-items: center; z-index: 50;
-  padding: var(--space-4);
-  animation: backdropIn var(--transition);
-}
-.modal {
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  width: 100%; max-width: 520px; max-height: 90vh; overflow: auto;
-  box-shadow: var(--shadow-lg);
-  padding: var(--space-5);
-  animation: modalIn var(--transition);
-}
-.modal-wide { max-width: 760px; }
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: var(--space-3);
-  gap: var(--space-3);
-}
-.modal-header h2 { margin: 0; font-size: var(--text-lg); }
+  .field {
+    @apply flex flex-col gap-1 mb-4;
+  }
 
-@keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to   { opacity: 1; transform: none; }
-}
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-surface-2 text-text-muted;
+  }
 
-/* ─── toasts ─────────────────────────────────────────────────── */
-.toasts {
-  position: fixed; right: var(--space-4); bottom: var(--space-4);
-  display: flex; flex-direction: column; gap: var(--space-2);
-  z-index: 100;
-}
-.toast {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left-width: 4px;
-  border-radius: var(--radius);
-  padding: var(--space-3) var(--space-4);
-  min-width: 240px; max-width: 480px;
-  box-shadow: var(--shadow-md);
-  animation: toastIn var(--transition);
-  cursor: pointer;
-}
-.toast-info    { border-left-color: var(--primary); }
-.toast-success { border-left-color: var(--success); }
-.toast-error   { border-left-color: var(--danger); }
-@keyframes toastIn {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: none; }
-}
+  .badge-primary { @apply bg-primary-bg text-primary border border-primary-border; }
+  .badge-warn { @apply bg-warn-bg text-warn border border-warn-border; }
+  .badge-danger { @apply bg-danger-bg text-danger border border-danger-border; }
+  .badge-success { @apply bg-success-bg text-success border border-success-border; }
 
-/* ─── dropzone (file uploader) ───────────────────────────────── */
-.dropzone {
-  border: 2px dashed var(--border-strong);
-  border-radius: var(--radius);
-  padding: var(--space-5);
-  text-align: center;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast),
-              color var(--transition-fast);
-}
-.dropzone:hover, .dropzone.over {
-  background: var(--primary-bg);
-  border-color: var(--primary);
-  color: var(--primary);
-}
+  .row { @apply flex items-center gap-4; }
+  .row-end { @apply flex items-center justify-end gap-3; }
+  .col { @apply flex flex-col gap-4; }
 
-/* ─── focus ring for native buttons not using <Button> ──────── */
-button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .muted { @apply text-text-muted; }
+  .subtle { @apply text-text-subtle; }
+  .danger { @apply text-danger; }
+  .right { @apply text-right; }
+  .mono { @apply font-mono text-xs; }
+  .spacer { @apply flex-1; }
 
-/* ─── skeleton (loading) ─────────────────────────────────────── */
-.skeleton {
-  display: block;
-  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-hover) 50%, var(--surface-2) 75%);
-  background-size: 200% 100%;
-  animation: skeletonPulse 1.4s ease-in-out infinite;
-  border-radius: var(--radius);
-}
-@keyframes skeletonPulse {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
+  .toolbar {
+    @apply flex flex-wrap items-center gap-3 py-3;
+  }
 
-/* ─── kbd / code chips ──────────────────────────────────────── */
-code, .kbd {
-  font-family: var(--font-mono);
-  font-size: 0.92em;
-  background: var(--surface-2);
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  .backdrop {
+    @apply fixed inset-0 z-50;
+    background: rgb(15 23 42 / 0.55);
+    backdrop-filter: blur(2px);
+    animation: var(--animate-fade-in);
+  }
+
+  .modal {
+    @apply fixed left-1/2 top-1/2 bg-surface rounded-lg p-5 shadow-lg w-full max-w-md;
+    transform: translate(-50%, -50%);
+    z-index: 51;
+    animation: var(--animate-slide-in-bottom);
+  }
+
+  .modal-wide { @apply max-w-3xl; }
+
+  .modal-header {
+    @apply flex items-center justify-between mb-4 border-b border-border pb-3;
+  }
+
+  .toasts {
+    @apply fixed bottom-6 right-6 flex flex-col gap-3;
+    z-index: 100;
+  }
+
+  .toast {
+    @apply bg-surface border-l-4 border-border rounded-md p-4 shadow-md w-72;
+    animation: var(--animate-slide-in-right);
+  }
+
+  .toast-info { @apply border-l-primary; }
+  .toast-success { @apply border-l-success; }
+  .toast-error { @apply border-l-danger; }
+
+  .dropzone {
+    @apply border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center justify-center gap-2 cursor-pointer;
+    transition: border-color var(--transition), background-color var(--transition);
+  }
+
+  .dropzone.over,
+  .dropzone:hover {
+    @apply border-primary bg-primary-bg;
+  }
+
+  .err { @apply text-xs text-danger mt-1; }
+  .hint { @apply text-xs text-text-muted mt-1; }
+
+  .skeleton {
+    @apply bg-surface-2 animate-pulse rounded;
+  }
+
+  .kbd {
+    @apply px-2 py-1 text-xs font-mono bg-surface-2 border border-border-strong rounded shadow-sm;
+  }
 }
