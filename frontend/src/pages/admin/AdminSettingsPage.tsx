@@ -205,14 +205,18 @@ function ThemePicker({
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-end mt-4">
-        {/* Preset dropdown */}
+        {/* Preset dropdown — only presets are pickable. The "Custom" entry
+         *  is a status display: it auto-shows when the colour picker / hex
+         *  input below has a value that doesn't match any preset, but it
+         *  can't be picked from the dropdown (that would be a no-op and
+         *  felt broken in earlier versions). */}
         <div className="field m-0">
           <label className="text-[13px] font-medium text-text-main">Preset</label>
           <select
             value={isCustom ? '__custom__' : matched.key}
             onChange={(e) => {
               const k = e.target.value;
-              if (k === '__custom__') return; // keep current value, just lets the picker show
+              if (k === '__custom__') return; // unreachable — the option is disabled
               const preset = THEME_PRESETS.find((p) => p.key === k);
               if (preset) onChange(preset.primary);
             }}
@@ -222,17 +226,20 @@ function ThemePicker({
             {THEME_PRESETS.map((p) => (
               <option key={p.key} value={p.key}>{p.label}</option>
             ))}
-            <option value="__custom__">Custom…</option>
+            <option value="__custom__" disabled>— Custom (use color picker →) —</option>
           </select>
           {!isCustom && matched.description && (
             <span className="hint">{matched.description}</span>
           )}
           {isCustom && (
-            <span className="hint">Custom primary color — preset doesn't match.</span>
+            <span className="hint">Custom primary — change with the color picker, or pick a preset to leave custom.</span>
           )}
         </div>
 
-        {/* Custom color picker */}
+        {/* Color picker + hex input — always usable. Picking a value here
+         *  that doesn't match any preset auto-flips the dropdown to
+         *  "Custom" status without the admin having to "select Custom"
+         *  first. */}
         <div className="field m-0">
           <label className="text-[13px] font-medium text-text-main">Color</label>
           <div className="flex items-center gap-2">
@@ -256,12 +263,14 @@ function ThemePicker({
           </div>
         </div>
 
-        {/* Live swatch row */}
+        {/* Live swatch row — primary family + sidebar tones. Sidebar derives
+         *  from the primary hue so every theme has a brand-consistent dark
+         *  anchor. */}
         <div className="field m-0">
           <label className="text-[13px] font-medium text-text-main">Preview</label>
           <div
             className="flex items-center h-10 rounded-md border border-border overflow-hidden"
-            title="primary · hover · active · bg · border"
+            title="primary · hover · active · bg · border · sidebar · sidebar-2"
           >
             {([
               ['primary', family.primary],
@@ -269,11 +278,13 @@ function ThemePicker({
               ['active', family.primaryActive],
               ['bg', family.primaryBg],
               ['border', family.primaryBorder],
+              ['sidebar', family.sidebar],
+              ['sidebar-2', family.sidebar2],
             ] as const).map(([label, hex]) => (
               <span
                 key={label}
                 title={`${label}: ${hex}`}
-                style={{ background: hex, width: 28, height: '100%' }}
+                style={{ background: hex, width: 24, height: '100%' }}
               />
             ))}
           </div>

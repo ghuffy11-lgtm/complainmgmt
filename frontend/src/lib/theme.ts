@@ -69,18 +69,33 @@ export function findPreset(hex: string): ThemePreset | null {
   return THEME_PRESETS.find((p) => p.primary.toLowerCase() === norm) ?? null;
 }
 
-/** The five derived tokens that get written onto :root as CSS variables. */
-export type PrimaryFamily = {
+/** The full set of derived tokens written onto :root as CSS variables.
+ *  Includes the primary family AND the sidebar tones — sidebar derives
+ *  from the primary hue so each theme has a brand-consistent dark anchor
+ *  (dark teal for Hadi, dark navy for Editorial Blue, dark forest for
+ *  Forest, etc.) instead of a generic slate that doesn't tie to the
+ *  brand. Sidebar text colours stay fixed (white + slate-muted) because
+ *  they need to be readable on any dark background. */
+export type ThemeFamily = {
   primary: string;
   primaryHover: string;
   primaryActive: string;
   primaryBg: string;
   primaryBorder: string;
+  /** Sidebar background — very low lightness, modestly tinted by primary. */
+  sidebar: string;
+  /** Sidebar surface 2 — slightly higher lightness, used for borders/hover. */
+  sidebar2: string;
+  /** Sidebar accent — full primary, used for active-row highlights. */
+  sidebarAccent: string;
 };
 
-/** Derive the five-token family from a single primary hex. */
-export function derivePrimaryFamily(hex: string): PrimaryFamily {
+/** Derive the full theme family from a single primary hex. */
+export function deriveThemeFamily(hex: string): ThemeFamily {
   const { h, s, l } = hexToHsl(hex);
+  // Cap sidebar saturation so the dark anchor never becomes a bright,
+  // distracting wash — we want "deeply tinted slate", not "dim primary".
+  const sidebarSat = Math.min(s * 0.3, 25);
   return {
     primary: hex,
     // Hover: ~8% darker — visible but subtle.
@@ -90,22 +105,31 @@ export function derivePrimaryFamily(hex: string): PrimaryFamily {
     // Bg: very pale tint of the primary — keeps the hue but pulls L to 96
     // and tames saturation so badge backgrounds aren't shouty.
     primaryBg: hslToHex(h, clamp(s * 0.4, 0, 100), 96),
-    // Border: light tint, around L=82, mid saturation. Keeps a hint of the
-    // primary hue on input borders / badge outlines.
+    // Border: light tint, around L=82, mid saturation.
     primaryBorder: hslToHex(h, clamp(s * 0.6, 0, 100), 82),
+    sidebar: hslToHex(h, sidebarSat, 12),
+    sidebar2: hslToHex(h, sidebarSat, 18),
+    sidebarAccent: hex,
   };
 }
 
-/** Apply a primary family by overriding the five CSS variables on :root.
+/** Apply a full theme family by overriding the CSS variables on :root.
  *  Call from a useEffect — runs whenever the branding query updates. */
-export function applyPrimaryFamilyToRoot(family: PrimaryFamily): void {
+export function applyThemeFamilyToRoot(family: ThemeFamily): void {
   const root = document.documentElement;
   root.style.setProperty('--primary', family.primary);
   root.style.setProperty('--primary-hover', family.primaryHover);
   root.style.setProperty('--primary-active', family.primaryActive);
   root.style.setProperty('--primary-bg', family.primaryBg);
   root.style.setProperty('--primary-border', family.primaryBorder);
+  root.style.setProperty('--sidebar', family.sidebar);
+  root.style.setProperty('--sidebar-2', family.sidebar2);
+  root.style.setProperty('--sidebar-accent', family.sidebarAccent);
 }
+
+// Re-export the old names for callers that haven't switched yet.
+export const derivePrimaryFamily = deriveThemeFamily;
+export const applyPrimaryFamilyToRoot = applyThemeFamilyToRoot;
 
 // ─── colour-space helpers ─────────────────────────────────────────────
 
