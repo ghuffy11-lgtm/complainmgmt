@@ -46,6 +46,16 @@ export class DynamicFieldEntity {
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem!: boolean;
 
+  /**
+   * When true, this field's values are filterable via the complaints list
+   * (`GET /complaints?fv[<key>]=…`) and the list toolbar renders an input
+   * for it. Defaults to false — admins opt in per field. Only meaningful
+   * for `text`, `number`, `dropdown`; `date` already has range filters,
+   * `file` is unsearchable.
+   */
+  @Column({ name: 'is_searchable', type: 'boolean', default: false })
+  isSearchable!: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

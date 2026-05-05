@@ -116,9 +116,33 @@ function coerceNumber(
     (errors[field.key] ??= []).push('NOT_A_NUMBER');
     return;
   }
-  const v = field.validation as { min?: number; max?: number };
+  const v = field.validation as {
+    min?: number; max?: number;
+    digits?: number; minDigits?: number; maxDigits?: number;
+  };
   if (typeof v.min === 'number' && n < v.min) (errors[field.key] ??= []).push('TOO_SMALL');
   if (typeof v.max === 'number' && n > v.max) (errors[field.key] ??= []).push('TOO_LARGE');
+
+  // Digit-count validators: count digits in the magnitude (negatives, leading
+  // zeros, fractional parts and exponents are all stripped — the field is a
+  // *number*, not a string, so by the time we get here `n` is already a clean
+  // numeric value).
+  if (
+    typeof v.digits === 'number' ||
+    typeof v.minDigits === 'number' ||
+    typeof v.maxDigits === 'number'
+  ) {
+    const digitCount = Math.trunc(Math.abs(n)).toString().length;
+    if (typeof v.digits === 'number' && digitCount !== v.digits) {
+      (errors[field.key] ??= []).push('WRONG_DIGIT_COUNT');
+    }
+    if (typeof v.minDigits === 'number' && digitCount < v.minDigits) {
+      (errors[field.key] ??= []).push('TOO_FEW_DIGITS');
+    }
+    if (typeof v.maxDigits === 'number' && digitCount > v.maxDigits) {
+      (errors[field.key] ??= []).push('TOO_MANY_DIGITS');
+    }
+  }
   coerced[field.key] = { kind: 'number', value: n };
 }
 

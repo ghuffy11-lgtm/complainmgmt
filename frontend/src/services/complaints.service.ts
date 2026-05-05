@@ -21,11 +21,23 @@ export type ListParams = {
   /** YYYY-MM-DD inclusive bounds on `complaint_date`. */
   dateFrom?: string;
   dateTo?: string;
+  /** Dynamic-field-value filters keyed by field key, e.g. `{mobile_number: '555'}`.
+   *  Wire-format: `?fv[mobile_number]=555`. Server enforces is_searchable. */
+  fv?: Record<string, string>;
 };
 
 export const ComplaintsService = {
   list(params: ListParams = {}) {
-    return api.get<Paged<Complaint>>('/complaints', { params }).then((r) => r.data);
+    // Flatten `fv` into bracketed query keys so axios + qs round-trip cleanly:
+    //   { fv: { mobile_number: '555' } }  →  ?fv[mobile_number]=555
+    const { fv, ...rest } = params;
+    const flat: Record<string, string | number | undefined> = { ...rest };
+    if (fv) {
+      for (const [k, v] of Object.entries(fv)) {
+        if (v !== '' && v != null) flat[`fv[${k}]`] = v;
+      }
+    }
+    return api.get<Paged<Complaint>>('/complaints', { params: flat }).then((r) => r.data);
   },
   get(id: string) {
     return api.get<ComplaintDetail>(`/complaints/${id}`).then((r) => r.data);

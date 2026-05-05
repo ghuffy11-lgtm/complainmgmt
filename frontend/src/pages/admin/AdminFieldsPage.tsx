@@ -124,6 +124,7 @@ function FieldEditor(props: EditorProps) {
   const [type, setType] = useState<FieldType>(f?.type ?? 'text');
   const [isRequired, setIsRequired] = useState(f?.isRequired ?? false);
   const [isActive, setIsActive] = useState(f?.isActive ?? true);
+  const [isSearchable, setIsSearchable] = useState(f?.isSearchable ?? false);
   const [sortOrder, setSortOrder] = useState(String(f?.sortOrder ?? 0));
   const [locking, setLocking] = useState<FieldLocking>(f?.locking ?? 'none');
   const [validation, setValidation] = useState(JSON.stringify(f?.validation ?? {}, null, 2));
@@ -135,13 +136,13 @@ function FieldEditor(props: EditorProps) {
       const vis = parseJson(visibility, 'visibility');
       if (isCreate) {
         return DynamicFieldsService.create({
-          key, label, type, isRequired, isActive,
+          key, label, type, isRequired, isActive, isSearchable,
           sortOrder: parseInt(sortOrder, 10) || 0,
           validation: v, visibility: vis as { roles: '*' | string[] }, locking,
         });
       }
       return DynamicFieldsService.update(props.field.id, {
-        label, isRequired, isActive,
+        label, isRequired, isActive, isSearchable,
         sortOrder: parseInt(sortOrder, 10) || 0,
         validation: v, visibility: vis as { roles: '*' | string[] }, locking,
       });
@@ -195,11 +196,22 @@ function FieldEditor(props: EditorProps) {
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
             <span>Active</span>
           </label>
+          {(type === 'text' || type === 'number' || type === 'dropdown') && (
+            <label className="row" style={{ cursor: 'pointer', marginLeft: 16 }}>
+              <input type="checkbox" checked={isSearchable} onChange={(e) => setIsSearchable(e.target.checked)} />
+              <span>Searchable in complaints list</span>
+            </label>
+          )}
         </div>
         <div className="field" style={{ gridColumn: '1 / -1' }}>
           <label>Validation (JSON)</label>
           <textarea className="mono" value={validation} onChange={(e) => setValidation(e.target.value)} rows={4} />
-          <span className="hint">e.g. <code className="mono">{`{"min":0,"max":100}`}</code> · <code className="mono">{`{"maxLength":500}`}</code></span>
+          <span className="hint">
+            e.g. <code className="mono">{`{"min":0,"max":100}`}</code> ·{' '}
+            <code className="mono">{`{"maxLength":500}`}</code> ·{' '}
+            <code className="mono">{`{"digits":8}`}</code>{' '}
+            <span className="muted">(exact digit count for numbers; also <code className="mono">minDigits</code> / <code className="mono">maxDigits</code>)</span>
+          </span>
         </div>
         <div className="field" style={{ gridColumn: '1 / -1' }}>
           <label>Visibility (JSON)</label>

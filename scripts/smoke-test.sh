@@ -78,9 +78,52 @@ N="$(echo "$SCHEMA" | python3 -c "import json,sys; print(len(json.load(sys.stdin
 
 # ─── 5. complaint lifecycle ───────────────────────────────────────────────
 step "complaint lifecycle (create → status → priority → audit)"
+# Auto-fill any required fields the admin has added via the field editor (e.g.
+# mobile_number with `{"digits":8}`). Without this, every newly required field
+# would break the smoke. The schema we already pulled in step 4 is reused.
+CREATE_BODY="$(echo "$SCHEMA" | python3 -c '
+import json, sys
+schema = json.load(sys.stdin)
+values = {"patient_complaint": "smoke test " + str(__import__("random").randint(1, 1_000_000))}
+for f in schema:
+    if not f.get("isActive") or not f.get("isRequired"):
+        continue
+    key = f["key"]
+    if key in values:
+        continue
+    t = f.get("type")
+    v = (f.get("validation") or {})
+    if t == "text":
+        s = "smoke-test"
+        if isinstance(v.get("maxLength"), int):
+            s = s[: v["maxLength"]]
+        values[key] = s
+    elif t == "number":
+        # Pick a value satisfying digits / minDigits / maxDigits / min / max.
+        if isinstance(v.get("digits"), int):
+            n = 10 ** (v["digits"] - 1) if v["digits"] > 0 else 0
+        elif isinstance(v.get("minDigits"), int):
+            n = 10 ** (v["minDigits"] - 1) if v["minDigits"] > 0 else 0
+        elif isinstance(v.get("min"), (int, float)):
+            n = int(v["min"])
+        else:
+            n = 1
+        if isinstance(v.get("max"), (int, float)) and n > v["max"]:
+            n = int(v["max"])
+        values[key] = n
+    elif t == "date":
+        import datetime
+        values[key] = datetime.date.today().isoformat()
+    elif t == "dropdown":
+        opts = [o for o in (f.get("options") or []) if o.get("isActive")]
+        if opts:
+            values[key] = opts[0]["id"]
+    # file: cannot synthesise — leave blank, expect smoke to flag if required
+print(json.dumps({"values": values, "priority": "normal"}))
+')"
 C="$("${CURL[@]}" -X POST "$BASE/api/complaints" "${H[@]}" \
   -H 'Content-Type: application/json' \
-  -d '{"values":{"patient_complaint":"smoke test '"$RANDOM"'"},"priority":"normal"}')"
+  -d "$CREATE_BODY")"
 ID="$(echo "$C" | JSON_GET '.id')"
 REF="$(echo "$C" | JSON_GET '.referenceNo')"
 [[ -n "$ID" && "$REF" =~ ^CMP-[0-9]{4}-[0-9]{6}$ ]] && ok "created $REF (id=$ID)" || nope "create returned: $C"

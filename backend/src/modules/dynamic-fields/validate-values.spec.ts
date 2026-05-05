@@ -73,6 +73,27 @@ describe('validateValues', () => {
     expect(validateValues({ n: 15 }, schema).ok).toBe(true);
   });
 
+  it('number: digits validator enforces exact digit count', () => {
+    const schema = [field({ key: 'mob', type: 'number', validation: { digits: 8 } })];
+    expect(validateValues({ mob: 1234567 }, schema).errors.mob).toEqual(['WRONG_DIGIT_COUNT']);
+    expect(validateValues({ mob: 123456789 }, schema).errors.mob).toEqual(['WRONG_DIGIT_COUNT']);
+    expect(validateValues({ mob: 55512345 }, schema).ok).toBe(true);
+  });
+
+  it('number: minDigits / maxDigits enforce a range', () => {
+    const schema = [field({ key: 'n', type: 'number', validation: { minDigits: 7, maxDigits: 10 } })];
+    expect(validateValues({ n: 123456 }, schema).errors.n).toEqual(['TOO_FEW_DIGITS']);
+    expect(validateValues({ n: 12345678901 }, schema).errors.n).toEqual(['TOO_MANY_DIGITS']);
+    expect(validateValues({ n: 1234567 }, schema).ok).toBe(true);
+    expect(validateValues({ n: 1234567890 }, schema).ok).toBe(true);
+  });
+
+  it('number: digit-count counts magnitude (sign and decimals stripped)', () => {
+    const schema = [field({ key: 'n', type: 'number', validation: { digits: 3 } })];
+    expect(validateValues({ n: -123 }, schema).ok).toBe(true);
+    expect(validateValues({ n: 123.45 }, schema).ok).toBe(true);
+  });
+
   it('date: requires ISO yyyy-mm-dd, enforces min/max', () => {
     const schema = [field({ key: 'd', type: 'date', validation: { min: '2026-01-01', max: '2026-12-31' } })];
     expect(validateValues({ d: '15-04-2026' }, schema).errors.d).toEqual(['NOT_A_DATE']);

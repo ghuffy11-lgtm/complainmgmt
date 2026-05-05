@@ -7,6 +7,7 @@ export type CreateFieldPayload = {
   type: FieldType;
   isRequired?: boolean;
   isActive?: boolean;
+  isSearchable?: boolean;
   sortOrder?: number;
   validation?: Record<string, unknown>;
   visibility?: { roles: '*' | string[] };

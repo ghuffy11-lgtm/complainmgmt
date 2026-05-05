@@ -71,6 +71,7 @@ export class DynamicFieldsService {
           type: dto.type,
           isRequired: dto.isRequired ?? false,
           isActive: dto.isActive ?? true,
+          isSearchable: dto.isSearchable ?? false,
           sortOrder: dto.sortOrder ?? 0,
           validation: dto.validation ?? {},
           visibility: (dto.visibility as DynamicFieldEntity['visibility']) ?? { roles: '*' },

@@ -35,6 +35,8 @@ export type DynamicField = {
   type: FieldType;
   isRequired: boolean;
   isActive: boolean;
+  /** When true, this field appears as a filter input on the complaints list. */
+  isSearchable: boolean;
   sortOrder: number;
   validation: Record<string, unknown>;
   visibility: { roles: '*' | string[] };

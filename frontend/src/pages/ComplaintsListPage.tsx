@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ComplaintsService, ListParams } from '../services/complaints.service';
 import { DepartmentsService } from '../services/departments.service';
+import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { Button } from '../components/ui/Button';
 import { IconPlus, IconSearch } from '../components/ui/Icons';
 import { Skeleton } from '../components/ui/Skeleton';
 import { usePermissions } from '../hooks/usePermissions';
-import type { ComplaintPriority, ComplaintStatus } from '../types/api';
+import type { ComplaintPriority, ComplaintStatus, DynamicField } from '../types/api';
 
 const STATUSES: ComplaintStatus[] = ['open', 'in_progress', 'resolved', 'closed', 'rejected'];
 const PRIORITIES: ComplaintPriority[] = ['low', 'normal', 'high', 'critical'];
@@ -18,6 +19,10 @@ export function ComplaintsListPage() {
   const nav = useNavigate();
   const { has } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const fieldsQ = useQuery({ queryKey: ['dynamic-fields'], queryFn: () => DynamicFieldsService.list() });
+  const searchableFields = (fieldsQ.data ?? []).filter(
+    (f) => f.isSearchable && f.isActive && (f.type === 'text' || f.type === 'number' || f.type === 'dropdown'),
+  );
 
   // Re-pick filters whenever the URL changes (e.g. dashboard click-through
   // navigates here with `?status=open`).
@@ -35,10 +40,17 @@ export function ComplaintsListPage() {
     setFilters(next);
     setSearchParams(queryFromFilters(next), { replace: true });
   };
+  const applyFv = (key: string, value: string | undefined) => {
+    const fv = { ...(filters.fv ?? {}) };
+    if (value && value.trim() !== '') fv[key] = value;
+    else delete fv[key];
+    apply({ fv: Object.keys(fv).length > 0 ? fv : undefined });
+  };
   const reset = () => {
     setFilters({ page: 1, pageSize: 25 });
     setSearchParams({}, { replace: true });
   };
+  const hasFvFilter = filters.fv && Object.keys(filters.fv).length > 0;
 
   return (
     <section>
@@ -110,8 +122,16 @@ export function ComplaintsListPage() {
             style={{ maxWidth: 150 }}
           />
         </label>
+        {searchableFields.map((f) => (
+          <SearchableFieldInput
+            key={f.id}
+            field={f}
+            value={filters.fv?.[f.key] ?? ''}
+            onChange={(v) => applyFv(f.key, v)}
+          />
+        ))}
         <span className="spacer" />
-        {(filters.q || filters.status || filters.priority || filters.departmentId || filters.dateFrom || filters.dateTo) && (
+        {(filters.q || filters.status || filters.priority || filters.departmentId || filters.dateFrom || filters.dateTo || hasFvFilter) && (
           <Button variant="ghost" onClick={reset}>Clear</Button>
         )}
       </div>
@@ -193,14 +213,45 @@ export function PriorityBadge({ priority }: { priority: ComplaintPriority }) {
   return <span className={`badge ${cls}`}>{priority}</span>;
 }
 
+function SearchableFieldInput({
+  field, value, onChange,
+}: { field: DynamicField; value: string; onChange: (v: string) => void }) {
+  if (field.type === 'dropdown') {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{`Any ${field.label.toLowerCase()}`}</option>
+        {(field.options ?? [])
+          .filter((o) => o.isActive)
+          .map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+      </select>
+    );
+  }
+  return (
+    <input
+      type={field.type === 'number' ? 'search' : 'search'}
+      inputMode={field.type === 'number' ? 'numeric' : undefined}
+      placeholder={field.label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ maxWidth: 180 }}
+    />
+  );
+}
+
 // ─── url ↔ filters serialisation ────────────────────────────────────────
 // The list reflects its filter state in the URL so dashboard click-throughs
 // land on a pre-filtered view (and the filtered URL is shareable / refreshable).
+// Dynamic-field filters use bracketed keys: `?fv[mobile_number]=555`.
 
 function filtersFromQuery(sp: URLSearchParams): ListParams {
   const get = (k: string) => sp.get(k) || undefined;
   const status = get('status') as ComplaintStatus | undefined;
   const priority = get('priority') as ComplaintPriority | undefined;
+  const fv: Record<string, string> = {};
+  for (const [k, v] of sp.entries()) {
+    const m = /^fv\[([^\]]+)\]$/.exec(k);
+    if (m && v && v.trim() !== '') fv[m[1]] = v;
+  }
   return {
     page: Number(sp.get('page')) || 1,
     pageSize: Number(sp.get('pageSize')) || 25,
@@ -211,6 +262,7 @@ function filtersFromQuery(sp: URLSearchParams): ListParams {
     q: get('q'),
     dateFrom: get('dateFrom'),
     dateTo: get('dateTo'),
+    fv: Object.keys(fv).length > 0 ? fv : undefined,
   };
 }
 
@@ -224,5 +276,10 @@ function queryFromFilters(f: ListParams): Record<string, string> {
   if (f.dateFrom) out.dateFrom = f.dateFrom;
   if (f.dateTo) out.dateTo = f.dateTo;
   if (f.page && f.page > 1) out.page = String(f.page);
+  if (f.fv) {
+    for (const [k, v] of Object.entries(f.fv)) {
+      if (v && v.trim() !== '') out[`fv[${k}]`] = v;
+    }
+  }
   return out;
 }

@@ -35,6 +35,7 @@ export class CreateFieldDto {
 
   @IsOptional() @IsBoolean() isRequired?: boolean;
   @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @IsBoolean() isSearchable?: boolean;
   @IsOptional() sortOrder?: number;
 
   @IsOptional() @IsObject() validation?: Record<string, unknown>;
@@ -51,6 +52,7 @@ export class UpdateFieldDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(120) label?: string;
   @IsOptional() @IsBoolean() isRequired?: boolean;
   @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @IsBoolean() isSearchable?: boolean;
   @IsOptional() sortOrder?: number;
   @IsOptional() @IsObject() validation?: Record<string, unknown>;
   @IsOptional() @ValidateNested() @Type(() => FieldVisibilityDto) visibility?: FieldVisibilityDto;

@@ -37,13 +37,20 @@ export class ComplaintsController {
     @Query('q') q?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    /**
+     * Express + qs parses `?fv[mobile_number]=555` as `fv: { mobile_number: '555' }`.
+     * Sanitised below — strings only, ignored otherwise.
+     */
+    @Query('fv') fvRaw?: unknown,
   ) {
     const p = Math.max(1, parseInt(page, 10) || 1);
     const ps = Math.min(200, Math.max(1, parseInt(pageSize, 10) || 25));
+    const fv = sanitiseFv(fvRaw);
     const r = await this.complaints.list({
       page: p, pageSize: ps,
       status, priority, assignedTo, departmentId, q,
       dateFrom, dateTo,
+      fv,
     });
     return { data: r.data, meta: { page: p, pageSize: ps, total: r.total } };
   }
@@ -92,4 +99,19 @@ export class ComplaintsController {
       actor,
     );
   }
+}
+
+/**
+ * Defensive: qs may parse weird query strings into shapes other than a flat
+ * `Record<string, string>`. Anything not a plain object → undefined; nested
+ * non-string values → dropped. The downstream service still rejects unknown
+ * or non-searchable keys.
+ */
+function sanitiseFv(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
