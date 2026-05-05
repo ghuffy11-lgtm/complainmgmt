@@ -31,16 +31,27 @@ export function ComplaintCreatePage() {
   const fieldsQ = useQuery({ queryKey: ['dynamic-fields'], queryFn: () => DynamicFieldsService.list() });
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
   const canSeeUsers = has('admin.users:read');
-  const usersQ = useQuery({
-    queryKey: ['users-list'],
-    queryFn: () => UsersService.list(1, 200),
-    enabled: canSeeUsers,
-  });
 
   const [values, setValues] = React.useState<Record<string, unknown>>({});
   const [priority, setPriority] = React.useState<ComplaintPriority>('normal');
   const [departmentId, setDepartmentId] = React.useState('');
   const [assignedTo, setAssignedTo] = React.useState('');
+
+  // Cascade: assignee list narrows to active members of the chosen
+  // department. The backend rejects mismatches; this just hides the
+  // invalid choices.
+  const usersQ = useQuery({
+    queryKey: ['users-list', { departmentId }],
+    queryFn: () =>
+      UsersService.list({ pageSize: 200, isActive: true, departmentId: departmentId || undefined }),
+    enabled: canSeeUsers && !!departmentId,
+  });
+
+  // Clear the assignee whenever the department changes — they may not be
+  // a member of the new one.
+  React.useEffect(() => {
+    setAssignedTo('');
+  }, [departmentId]);
   const [complaintDate, setComplaintDate] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [errors, setErrors] = React.useState<Record<string, string[]>>({});
 
@@ -171,13 +182,16 @@ export function ComplaintCreatePage() {
             </div>
 
             <div className="field">
-              <label className="text-[13px] font-medium text-text-main">Department</label>
+              <label className="text-[13px] font-medium text-text-main">
+                Department <span className="text-danger">*</span>
+              </label>
               <select
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
+                required
                 className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                <option value="">— unassigned —</option>
+                <option value="">— pick a department —</option>
                 {(departmentsQ.data ?? [])
                   .filter((d) => d.isActive)
                   .map((d) => (
@@ -193,19 +207,22 @@ export function ComplaintCreatePage() {
               <select
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
-                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={!departmentId}
+                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-60"
               >
                 <option value="">— department queue —</option>
-                {(usersQ.data?.data ?? [])
-                  .filter((u) => u.isActive)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.displayName} ({u.username})
-                    </option>
-                  ))}
+                {(usersQ.data?.data ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName} ({u.username})
+                  </option>
+                ))}
               </select>
               <span className="hint">
-                Leave unassigned to route to the department queue. Reassignment later requires <code className="mono">complaint:assign</code>.
+                {!departmentId
+                  ? 'Pick a department first — the assignee list narrows to its active members.'
+                  : (usersQ.data && usersQ.data.data.length === 0)
+                  ? 'No active members in this department yet — leaves the complaint in the department queue.'
+                  : 'Leave unassigned to route to the department queue. Reassignment later requires complaint:assign.'}
               </span>
             </div>
           )}

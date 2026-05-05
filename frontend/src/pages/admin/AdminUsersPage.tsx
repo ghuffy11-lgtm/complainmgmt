@@ -127,7 +127,8 @@ function CreateUserModal({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
-  const [departmentId, setDepartmentId] = useState('');
+  const [departmentIds, setDepartmentIds] = useState<string[]>([]);
+  const [primaryId, setPrimaryId] = useState<string>('');
 
   const m = useMutation({
     mutationFn: () =>
@@ -135,7 +136,8 @@ function CreateUserModal({
         username, displayName,
         email: email || undefined,
         password, roleIds,
-        departmentId: departmentId || undefined,
+        departmentIds: departmentIds.length > 0 ? departmentIds : undefined,
+        departmentId: primaryId || undefined,
       }),
     onSuccess: () => { toast.success('User created'); onCreated(); },
     onError: (err) => toast.error(errorMessage(err, 'Create failed')),
@@ -168,17 +170,15 @@ function CreateUserModal({
         <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
         <span className="hint">Min 10 chars. The user should change it on first login.</span>
       </div>
-      <div className="field"><label>Home department (optional)</label>
-        <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-          <option value="">— none —</option>
-          {departments.filter((d) => d.isActive).map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
-          ))}
-        </select>
-        <span className="hint">
-          Used for the scoped user dashboard. Leave blank for admins/managers who span departments.
-        </span>
-      </div>
+      <DepartmentPicker
+        departments={departments}
+        memberships={departmentIds}
+        primaryId={primaryId}
+        onChange={(next) => {
+          setDepartmentIds(next.memberships);
+          setPrimaryId(next.primaryId);
+        }}
+      />
       <div className="field"><label>Roles</label>
         <RolePicker roles={roles} value={roleIds} onChange={setRoleIds} />
       </div>
@@ -192,7 +192,8 @@ function EditUserModal({
   const toast = useToast();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [email, setEmail] = useState(user.email ?? '');
-  const [departmentId, setDepartmentId] = useState(user.departmentId ?? '');
+  const [departmentIds, setDepartmentIds] = useState<string[]>(user.departmentIds ?? []);
+  const [primaryId, setPrimaryId] = useState<string>(user.departmentId ?? '');
   const [roleIds, setRoleIds] = useState<string[]>([]);
 
   const updateM = useMutation({
@@ -200,7 +201,8 @@ function EditUserModal({
       await UsersService.update(user.id, {
         displayName,
         email: email || null,
-        departmentId: departmentId === '' ? null : departmentId,
+        departmentIds,
+        departmentId: primaryId === '' ? null : primaryId,
       });
       if (roleIds.length > 0) await UsersService.setRoles(user.id, roleIds);
     },
@@ -228,15 +230,15 @@ function EditUserModal({
       <div className="field"><label>Email</label>
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
-      <div className="field"><label>Home department</label>
-        <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-          <option value="">— none —</option>
-          {departments.filter((d) => d.isActive || d.id === user.departmentId).map((d) => (
-            <option key={d.id} value={d.id}>{d.name}{!d.isActive ? ' (inactive)' : ''}</option>
-          ))}
-        </select>
-        <span className="hint">Used for the scoped user dashboard.</span>
-      </div>
+      <DepartmentPicker
+        departments={departments}
+        memberships={departmentIds}
+        primaryId={primaryId}
+        onChange={(next) => {
+          setDepartmentIds(next.memberships);
+          setPrimaryId(next.primaryId);
+        }}
+      />
       <div className="field"><label>Replace roles</label>
         <span className="hint">
           Pick one or more to replace this user's current roles. Leave all unchecked to keep them as-is.
@@ -244,6 +246,95 @@ function EditUserModal({
         <RolePicker roles={roles} value={roleIds} onChange={setRoleIds} />
       </div>
     </Modal>
+  );
+}
+
+/** Multi-checkbox department membership editor with a primary radio.
+ *  Emits both lists at once so the parent never holds a primary that isn't
+ *  one of the memberships (the backend rejects that combo). */
+function DepartmentPicker({
+  departments,
+  memberships,
+  primaryId,
+  onChange,
+}: {
+  departments: Department[];
+  memberships: string[];
+  primaryId: string;
+  onChange: (next: { memberships: string[]; primaryId: string }) => void;
+}) {
+  const sorted = [...departments].sort((a, b) => a.name.localeCompare(b.name));
+  const setMembership = (id: string, on: boolean) => {
+    let nextMemberships = on
+      ? Array.from(new Set([...memberships, id]))
+      : memberships.filter((d) => d !== id);
+    let nextPrimary = primaryId;
+    if (!on && primaryId === id) nextPrimary = nextMemberships[0] ?? '';
+    if (on && !primaryId) nextPrimary = id;
+    onChange({ memberships: nextMemberships, primaryId: nextPrimary });
+  };
+  const setPrimary = (id: string) => {
+    if (!memberships.includes(id)) {
+      // Promoting a non-member also adds them as a member.
+      onChange({ memberships: [...memberships, id], primaryId: id });
+    } else {
+      onChange({ memberships, primaryId: id });
+    }
+  };
+
+  return (
+    <div className="field">
+      <label>Departments</label>
+      <span className="hint">
+        Tick every department this user belongs to. The starred row is the primary —
+        used to default form pickers and label the dashboard scope.
+      </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+        {sorted.map((d) => {
+          const isMember = memberships.includes(d.id);
+          const isPrimary = primaryId === d.id;
+          return (
+            <label
+              key={d.id}
+              className="row"
+              style={{
+                background: isMember ? 'var(--surface-2)' : 'transparent',
+                padding: '6px 10px',
+                borderRadius: 'var(--radius)',
+                cursor: 'pointer',
+                border: '1px solid var(--border)',
+                opacity: d.isActive ? 1 : 0.6,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isMember}
+                onChange={(e) => setMembership(d.id, e.target.checked)}
+                disabled={!d.isActive && !isMember}
+              />
+              <span style={{ flex: 1 }}>
+                {d.name}
+                {!d.isActive && <span className="muted"> (inactive)</span>}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPrimary(d.id)}
+                title={isPrimary ? 'Primary department' : 'Make primary'}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 16,
+                  color: isPrimary ? 'var(--warn)' : 'var(--text-subtle)',
+                }}
+              >
+                {isPrimary ? '★' : '☆'}
+              </button>
+            </label>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
