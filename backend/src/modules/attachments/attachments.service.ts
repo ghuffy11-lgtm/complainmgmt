@@ -65,8 +65,8 @@ export class AttachmentsService {
     this.maxBytes = app.attachments.maxBytes;
   }
 
-  async list(complaintId: string): Promise<AttachmentMeta[]> {
-    await this.assertComplaintExists(complaintId);
+  async list(complaintId: string, actor: AuthUser): Promise<AttachmentMeta[]> {
+    await this.assertVisible(complaintId, actor);
     const rows = await this.repo.find({ where: { complaintId }, order: { uploadedAt: 'ASC' } });
     return rows.map(this.toMeta);
   }
@@ -104,6 +104,7 @@ export class AttachmentsService {
         .where('c.id = :id', { id: complaintId })
         .getOne();
       if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      this.assertComplaintVisible(complaint, actor);
       assertEditable(complaint, actor);
 
       const count = await em.getRepository(AttachmentEntity).count({ where: { complaintId } });
@@ -144,7 +145,9 @@ export class AttachmentsService {
   async download(
     complaintId: string,
     attachmentId: string,
+    actor: AuthUser,
   ): Promise<{ stream: NodeJS.ReadableStream; meta: AttachmentMeta }> {
+    await this.assertVisible(complaintId, actor);
     const row = await this.findRow(complaintId, attachmentId);
     const stream = await this.store.getStream(row.id);
     return { stream, meta: this.toMeta(row) };
@@ -155,6 +158,7 @@ export class AttachmentsService {
       const complaint = await em.getRepository(ComplaintEntity)
         .findOne({ where: { id: complaintId } });
       if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      this.assertComplaintVisible(complaint, actor);
       assertEditable(complaint, actor);
 
       const row = await em
@@ -205,11 +209,29 @@ export class AttachmentsService {
     return row;
   }
 
-  private async assertComplaintExists(complaintId: string): Promise<void> {
-    const exists = await this.dataSource
+  /** Load a complaint and ensure the actor can see it. Mirrors the
+   *  visibility scope on `complaints.service`: full read for `complaint:read`,
+   *  otherwise the complaint must be in the actor's department memberships
+   *  OR they must have created it. 404 (not 403) on miss to avoid leaking
+   *  cross-dept existence — same rule the parent endpoint follows. */
+  private async assertVisible(complaintId: string, actor: AuthUser): Promise<void> {
+    const complaint = await this.dataSource
       .getRepository(ComplaintEntity)
-      .exists({ where: { id: complaintId } });
-    if (!exists) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+      .findOne({ where: { id: complaintId } });
+    if (!complaint) throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+    this.assertComplaintVisible(complaint, actor);
+  }
+
+  private assertComplaintVisible(complaint: ComplaintEntity, actor: AuthUser): void {
+    if (actor.permissions.has('complaint:read')) return;
+    const deptIds = actor.departmentIds ?? [];
+    const inDept =
+      complaint.assignedDepartmentId != null &&
+      deptIds.includes(String(complaint.assignedDepartmentId));
+    const isCreator = String(complaint.createdBy) === String(actor.id);
+    if (!inDept && !isCreator) {
+      throw new NotFoundException({ code: 'COMPLAINT_NOT_FOUND' });
+    }
   }
 
   private async allowedMimes(): Promise<string[]> {

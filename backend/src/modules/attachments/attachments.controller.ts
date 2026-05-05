@@ -14,16 +14,19 @@ import { Response } from 'express';
 import { AttachmentsService } from './attachments.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user.type';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../common/decorators/permissions.decorator';
 
 @Controller('complaints/:complaintId/attachments')
 export class AttachmentsController {
   constructor(private readonly attachments: AttachmentsService) {}
 
   @Get()
-  @RequirePermissions('complaint:read')
-  list(@Param('complaintId') complaintId: string) {
-    return this.attachments.list(complaintId);
+  @RequireAnyPermission('complaint:read', 'complaint.own:read')
+  list(@Param('complaintId') complaintId: string, @CurrentUser() actor: AuthUser) {
+    return this.attachments.list(complaintId, actor);
   }
 
   @Post()
@@ -38,13 +41,14 @@ export class AttachmentsController {
   }
 
   @Get(':attId/download')
-  @RequirePermissions('complaint:read')
+  @RequireAnyPermission('complaint:read', 'complaint.own:read')
   async download(
     @Param('complaintId') complaintId: string,
     @Param('attId') attId: string,
+    @CurrentUser() actor: AuthUser,
     @Res() res: Response,
   ): Promise<void> {
-    const { stream, meta } = await this.attachments.download(complaintId, attId);
+    const { stream, meta } = await this.attachments.download(complaintId, attId, actor);
     res.setHeader('Content-Type', meta.mimeType);
     res.setHeader('Content-Length', String(meta.byteSize));
     res.setHeader(
@@ -57,7 +61,7 @@ export class AttachmentsController {
   }
 
   @Delete(':attId')
-  @RequirePermissions('complaint:read')
+  @RequireAnyPermission('complaint:read', 'complaint.own:read')
   @HttpCode(204)
   async remove(
     @Param('complaintId') complaintId: string,
