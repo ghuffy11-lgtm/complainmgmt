@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { ComplaintsService, ListParams } from '../services/complaints.service';
 import { DepartmentsService } from '../services/departments.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { Button } from '../components/ui/Button';
-import { IconPlus, IconSearch } from '../components/ui/Icons';
+import { Card } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
 import { usePermissions } from '../hooks/usePermissions';
+import { cn } from '../lib/utils';
 import type { ComplaintPriority, ComplaintStatus, DynamicField } from '../types/api';
 
 const STATUSES: ComplaintStatus[] = ['open', 'in_progress', 'resolved', 'closed', 'rejected'];
@@ -15,7 +17,7 @@ const PRIORITIES: ComplaintPriority[] = ['low', 'normal', 'high', 'critical'];
 
 export function ComplaintsListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [filters, setFilters] = useState<ListParams>(() => filtersFromQuery(searchParams));
+  const [filters, setFilters] = React.useState<ListParams>(() => filtersFromQuery(searchParams));
   const nav = useNavigate();
   const { has } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
@@ -24,9 +26,7 @@ export function ComplaintsListPage() {
     (f) => f.isSearchable && f.isActive && (f.type === 'text' || f.type === 'number' || f.type === 'dropdown'),
   );
 
-  // Re-pick filters whenever the URL changes (e.g. dashboard click-through
-  // navigates here with `?status=open`).
-  useEffect(() => {
+  React.useEffect(() => {
     setFilters((prev) => ({ ...filtersFromQuery(searchParams), pageSize: prev.pageSize ?? 25 }));
   }, [searchParams]);
 
@@ -51,148 +51,204 @@ export function ComplaintsListPage() {
     setSearchParams({}, { replace: true });
   };
   const hasFvFilter = filters.fv && Object.keys(filters.fv).length > 0;
+  const hasAnyFilter =
+    !!(filters.q || filters.status || filters.priority || filters.departmentId || filters.dateFrom || filters.dateTo || hasFvFilter);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.meta.total / data.meta.pageSize)) : 1;
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Complaints</h1>
-        <span className="spacer" />
+    <section className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Complaints</h1>
+          <p className="text-sm text-text-muted mt-1">Manage and track patient feedback</p>
+        </div>
         {has('complaint:create') && (
-          <Button icon={<IconPlus size={14} />} onClick={() => nav('/complaints/new')}>
+          <Button icon={<Plus size={16} />} onClick={() => nav('/complaints/new')}>
             New complaint
           </Button>
         )}
       </div>
 
-      <div className="toolbar">
-        <div style={{ position: 'relative', maxWidth: 240, flex: '0 0 auto' }}>
-          <span
-            aria-hidden
-            style={{
-              position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-              color: 'var(--text-subtle)', display: 'flex', pointerEvents: 'none',
-            }}
-          >
-            <IconSearch size={14} />
-          </span>
-          <input
-            type="search"
-            placeholder="Search reference…"
-            value={filters.q ?? ''}
-            onChange={(e) => apply({ q: e.target.value || undefined })}
-            style={{ paddingLeft: 32 }}
-          />
-        </div>
-        <select
-          value={filters.status ?? ''}
-          onChange={(e) => apply({ status: (e.target.value || undefined) as ComplaintStatus | undefined })}
-        >
-          <option value="">Any status</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-        </select>
-        <select
-          value={filters.priority ?? ''}
-          onChange={(e) => apply({ priority: (e.target.value || undefined) as ComplaintPriority | undefined })}
-        >
-          <option value="">Any priority</option>
-          {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select
-          value={filters.departmentId ?? ''}
-          onChange={(e) => apply({ departmentId: e.target.value || undefined })}
-        >
-          <option value="">Any department</option>
-          {(departmentsQ.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-        <label className="row" style={{ gap: 4 }}>
-          <span className="muted" style={{ fontSize: 12 }}>Date from</span>
-          <input
-            type="date"
-            value={filters.dateFrom ?? ''}
-            onChange={(e) => apply({ dateFrom: e.target.value || undefined })}
-            style={{ maxWidth: 150 }}
-          />
-        </label>
-        <label className="row" style={{ gap: 4 }}>
-          <span className="muted" style={{ fontSize: 12 }}>to</span>
-          <input
-            type="date"
-            value={filters.dateTo ?? ''}
-            onChange={(e) => apply({ dateTo: e.target.value || undefined })}
-            style={{ maxWidth: 150 }}
-          />
-        </label>
-        {searchableFields.map((f) => (
-          <SearchableFieldInput
-            key={f.id}
-            field={f}
-            value={filters.fv?.[f.key] ?? ''}
-            onChange={(v) => applyFv(f.key, v)}
-          />
-        ))}
-        <span className="spacer" />
-        {(filters.q || filters.status || filters.priority || filters.departmentId || filters.dateFrom || filters.dateTo || hasFvFilter) && (
-          <Button variant="ghost" onClick={reset}>Clear</Button>
-        )}
-      </div>
+      <Card className="p-0 overflow-hidden">
+        {/* Toolbar */}
+        <div className="p-4 border-b border-border bg-surface-2/30 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[220px] max-w-[280px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle w-4 h-4 pointer-events-none" />
+            <input
+              type="search"
+              placeholder="Search reference…"
+              value={filters.q ?? ''}
+              onChange={(e) => apply({ q: e.target.value || undefined })}
+              className="w-full bg-surface border border-border-strong rounded-md h-9 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+            />
+          </div>
 
-      {isLoading && (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} height={20} />
+          <select
+            value={filters.status ?? ''}
+            onChange={(e) => apply({ status: (e.target.value || undefined) as ComplaintStatus | undefined })}
+            className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Any status</option>
+            {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+          </select>
+
+          <select
+            value={filters.priority ?? ''}
+            onChange={(e) => apply({ priority: (e.target.value || undefined) as ComplaintPriority | undefined })}
+            className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Any priority</option>
+            {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+
+          <select
+            value={filters.departmentId ?? ''}
+            onChange={(e) => apply({ departmentId: e.target.value || undefined })}
+            className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Any department</option>
+            {(departmentsQ.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+
+          <DateRangeInput
+            label="From"
+            value={filters.dateFrom ?? ''}
+            onChange={(v) => apply({ dateFrom: v || undefined })}
+          />
+          <DateRangeInput
+            label="To"
+            value={filters.dateTo ?? ''}
+            onChange={(v) => apply({ dateTo: v || undefined })}
+          />
+
+          {searchableFields.map((f) => (
+            <SearchableFieldInput
+              key={f.id}
+              field={f}
+              value={filters.fv?.[f.key] ?? ''}
+              onChange={(v) => applyFv(f.key, v)}
+            />
           ))}
+
+          {hasAnyFilter && (
+            <Button variant="ghost" size="sm" onClick={reset} className="ml-auto">
+              Clear filters
+            </Button>
+          )}
         </div>
-      )}
-      {error && <p className="danger">Failed to load complaints.</p>}
-      {data && (
-        <>
-          <table>
-            <thead>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead className="bg-surface-2/50 text-[11px] font-semibold text-text-muted uppercase tracking-wider">
               <tr>
-                <th>Ref</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Complaint date</th>
-                <th>Updated</th>
+                <th className="text-left px-5 py-3 border-b border-border">Reference</th>
+                <th className="text-left px-5 py-3 border-b border-border">Status</th>
+                <th className="text-left px-5 py-3 border-b border-border">Priority</th>
+                <th className="text-left px-5 py-3 border-b border-border">Complaint date</th>
+                <th className="text-left px-5 py-3 border-b border-border">Updated</th>
               </tr>
             </thead>
-            <tbody>
-              {data.data.map((c) => (
-                <tr key={c.id}>
-                  <td><Link to={`/complaints/${c.id}`}>{c.referenceNo}</Link></td>
-                  <td><StatusBadge status={c.status} /></td>
-                  <td><PriorityBadge priority={c.priority} /></td>
-                  <td className="mono">
-                    {c.complaintDate
-                      ? c.complaintDate
-                      : <span className="muted" title={`Submitted ${new Date(c.createdAt).toLocaleString()}`}>—</span>}
-                  </td>
-                  <td className="mono">{new Date(c.updatedAt).toLocaleString()}</td>
+            <tbody className="divide-y divide-border">
+              {isLoading && Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={5} className="px-5 py-3"><Skeleton height={16} /></td>
                 </tr>
               ))}
-              {data.data.length === 0 && (
-                <tr><td colSpan={5}><span className="muted">No complaints match these filters.</span></td></tr>
+
+              {!isLoading && error && (
+                <tr><td colSpan={5} className="px-5 py-6 text-center text-danger">Failed to load complaints.</td></tr>
               )}
+
+              {!isLoading && data && data.data.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-text-muted">
+                    No complaints match these filters.
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && data && data.data.map((c) => (
+                <tr
+                  key={c.id}
+                  className="hover:bg-surface-hover/60 transition-colors group cursor-pointer"
+                  onClick={() => nav(`/complaints/${c.id}`)}
+                >
+                  <td className="px-5 py-4 text-[13px] font-medium">
+                    <Link
+                      to={`/complaints/${c.id}`}
+                      className="text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {c.referenceNo}
+                    </Link>
+                  </td>
+                  <td className="px-5 py-4"><StatusBadge status={c.status} /></td>
+                  <td className="px-5 py-4"><PriorityBadge priority={c.priority} /></td>
+                  <td className="px-5 py-4 text-[13px] text-text-muted font-mono">
+                    {c.complaintDate
+                      ? c.complaintDate
+                      : <span title={`Submitted ${new Date(c.createdAt).toLocaleString()}`}>—</span>}
+                  </td>
+                  <td className="px-5 py-4 text-[13px] text-text-muted font-mono">
+                    {new Date(c.updatedAt).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
+        </div>
 
-          <div className="row" style={{ marginTop: 12 }}>
-            <span className="muted">Page {data.meta.page} · {data.data.length} of {data.meta.total}</span>
-            <span className="spacer" />
-            <Button
-              variant="secondary"
-              disabled={data.meta.page <= 1}
-              onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) - 1 }))}
-            >Previous</Button>
-            <Button
-              variant="secondary"
-              disabled={data.meta.page * data.meta.pageSize >= data.meta.total}
-              onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
-            >Next</Button>
+        {/* Pagination */}
+        {data && data.meta.total > 0 && (
+          <div className="p-4 border-t border-border flex items-center justify-between bg-surface-2/10">
+            <span className="text-xs text-text-muted">
+              Showing {(data.meta.page - 1) * data.meta.pageSize + 1} – {Math.min(data.meta.page * data.meta.pageSize, data.meta.total)} of {data.meta.total} entries
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="px-2 h-8"
+                disabled={data.meta.page <= 1}
+                onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) - 1 }))}
+              >
+                <ChevronLeft size={16} />
+              </Button>
+              <span className="text-xs text-text-muted px-2">
+                Page <span className="font-semibold text-text-main">{data.meta.page}</span> of {totalPages}
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="px-2 h-8"
+                disabled={data.meta.page >= totalPages}
+                onClick={() => setFilters((f) => ({ ...f, page: (f.page ?? 1) + 1 }))}
+              >
+                <ChevronRight size={16} />
+              </Button>
+            </div>
           </div>
-        </>
-      )}
+        )}
+      </Card>
     </section>
+  );
+}
+
+function DateRangeInput({
+  label, value, onChange,
+}: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-text-muted">
+      <span>{label}</span>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 bg-surface border border-border-strong rounded-md px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+      />
+    </label>
   );
 }
 
@@ -202,7 +258,7 @@ export function StatusBadge({ status }: { status: ComplaintStatus }) {
     status === 'in_progress' ? 'badge-warn' :
     status === 'resolved' ? 'badge-success' :
     status === 'rejected' ? 'badge-danger' : '';
-  return <span className={`badge ${cls}`}>{status.replace('_', ' ')}</span>;
+  return <span className={cn('badge', cls)}>{status.replace('_', ' ')}</span>;
 }
 
 export function PriorityBadge({ priority }: { priority: ComplaintPriority }) {
@@ -210,7 +266,7 @@ export function PriorityBadge({ priority }: { priority: ComplaintPriority }) {
     priority === 'critical' ? 'badge-danger' :
     priority === 'high' ? 'badge-warn' :
     priority === 'low' ? 'badge-success' : '';
-  return <span className={`badge ${cls}`}>{priority}</span>;
+  return <span className={cn('badge', cls)}>{priority}</span>;
 }
 
 function SearchableFieldInput({
@@ -218,7 +274,11 @@ function SearchableFieldInput({
 }: { field: DynamicField; value: string; onChange: (v: string) => void }) {
   if (field.type === 'dropdown') {
     return (
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
+      >
         <option value="">{`Any ${field.label.toLowerCase()}`}</option>
         {(field.options ?? [])
           .filter((o) => o.isActive)
@@ -228,12 +288,12 @@ function SearchableFieldInput({
   }
   return (
     <input
-      type={field.type === 'number' ? 'search' : 'search'}
+      type="search"
       inputMode={field.type === 'number' ? 'numeric' : undefined}
       placeholder={field.label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      style={{ maxWidth: 180 }}
+      className="h-9 max-w-[180px] bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
     />
   );
 }
