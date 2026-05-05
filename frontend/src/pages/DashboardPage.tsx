@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -19,60 +19,59 @@ import {
 import { DashboardService } from '../services/dashboard.service';
 import { DepartmentsService } from '../services/departments.service';
 import { usePermissions } from '../hooks/usePermissions';
+import { Card } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { cn } from '../lib/utils';
 
 const WINDOWS = [
   { label: '30 days', days: 30 },
   { label: '90 days', days: 90 },
-  { label: '1 year',  days: 365 },
+  { label: '1 year', days: 365 },
 ];
 
 // Recharts can't read CSS variables directly — colours are baked in at
-// render time. Keep these in sync with styles.css if the palette shifts.
-const ACCENT     = 'hsl(185, 55%, 38%)';   // teal (--accent)
-const SUCCESS    = 'hsl(152, 55%, 35%)';
-const WARN       = 'hsl(38, 85%, 48%)';
-const DANGER     = 'hsl(0, 70%, 45%)';
-const SLATE_500  = 'hsl(215, 15%, 50%)';
-const SLATE_300  = 'hsl(215, 15%, 70%)';
-const GRID       = 'hsl(215, 20%, 88%)';   // --border
+// render time. Keep these in sync with styles.css :root if the palette shifts.
+const PRIMARY = '#2563eb';
+const SUCCESS = '#10b981';
+const WARN = '#f59e0b';
+const DANGER = '#dc2626';
+const SLATE_500 = '#64748b';
+const SLATE_300 = '#94a3b8';
+const GRID = '#e2e8f0';
 
 const STATUS_COLORS: Record<string, string> = {
-  open:        ACCENT,
+  open: PRIMARY,
   in_progress: WARN,
-  resolved:    SUCCESS,
-  closed:      SLATE_500,
-  rejected:    DANGER,
+  resolved: SUCCESS,
+  closed: SLATE_500,
+  rejected: DANGER,
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low:      SLATE_300,
-  normal:   ACCENT,
-  high:     WARN,
+  low: SLATE_300,
+  normal: PRIMARY,
+  high: WARN,
   critical: DANGER,
 };
 
-// Aging buckets get progressively warmer as complaints get older.
-const AGING_COLORS = [SUCCESS, WARN, DANGER, 'hsl(0, 70%, 30%)'];
+const AGING_COLORS = [SUCCESS, WARN, DANGER, '#7f1d1d'];
 
 export function DashboardPage() {
   const { has, user } = usePermissions();
-
-  // `dashboard:read` = full picture (manager / admin). Otherwise the server
-  // forces scope-to-own-department; the page renders a slimmer layout.
   const isFullView = has('dashboard:read');
   const isScopedOnly = !isFullView && has('dashboard.own:read');
 
   if (isScopedOnly) {
     if (!user?.departmentId) {
       return (
-        <section>
-          <h1>Dashboard</h1>
-          <div className="card">
-            <p className="muted" style={{ marginTop: 0 }}>
+        <section className="space-y-6">
+          <h1 className="text-2xl font-bold tracking-tight m-0">Dashboard</h1>
+          <Card>
+            <p className="muted m-0">
               Your account isn't linked to a department yet, so there's nothing to scope the
-              dashboard to. Ask an admin to set your "home department" on Admin → Users.
+              dashboard to. Ask an admin to set your home department on Admin → Users.
             </p>
-          </div>
+          </Card>
         </section>
       );
     }
@@ -85,15 +84,15 @@ export function DashboardPage() {
 // ─── Full / manager dashboard ───────────────────────────────────────────
 
 function ManagerDashboard() {
-  const summaryQ     = useQuery({ queryKey: ['dashboard', 'summary'],       queryFn: () => DashboardService.summary() });
-  const statusQ      = useQuery({ queryKey: ['dashboard', 'by-status'],     queryFn: () => DashboardService.byStatus() });
-  const priorityQ    = useQuery({ queryKey: ['dashboard', 'by-priority'],   queryFn: () => DashboardService.byPriority() });
-  const deptQ        = useQuery({ queryKey: ['dashboard', 'by-department'], queryFn: () => DashboardService.byDepartment() });
-  const departmentsQ = useQuery({ queryKey: ['departments'],                queryFn: () => DepartmentsService.list() });
-  const agingQ       = useQuery({ queryKey: ['dashboard', 'aging'],         queryFn: () => DashboardService.aging() });
+  const summaryQ = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => DashboardService.summary() });
+  const statusQ = useQuery({ queryKey: ['dashboard', 'by-status'], queryFn: () => DashboardService.byStatus() });
+  const priorityQ = useQuery({ queryKey: ['dashboard', 'by-priority'], queryFn: () => DashboardService.byPriority() });
+  const deptQ = useQuery({ queryKey: ['dashboard', 'by-department'], queryFn: () => DashboardService.byDepartment() });
+  const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const agingQ = useQuery({ queryKey: ['dashboard', 'aging'], queryFn: () => DashboardService.aging() });
 
-  const [days, setDays] = useState(90);
-  const trendQ   = useQuery({ queryKey: ['dashboard', 'by-date', days],            queryFn: () => DashboardService.byDate(days) });
+  const [days, setDays] = React.useState(90);
+  const trendQ = useQuery({ queryKey: ['dashboard', 'by-date', days], queryFn: () => DashboardService.byDate(days) });
   const latencyQ = useQuery({ queryKey: ['dashboard', 'resolution-latency', days], queryFn: () => DashboardService.resolutionLatency(days) });
 
   const deptName = (id: string | null): string =>
@@ -103,49 +102,39 @@ function ManagerDashboard() {
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
   return (
-    <section>
-      <h1>Dashboard</h1>
+    <section className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
+        <p className="text-sm text-text-muted mt-1">System-wide overview across all departments</p>
+      </div>
 
-      {/* KPI strip — clickable */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiLink to="/complaints" label="Total complaints" value={summaryQ.data?.total ?? '—'} />
-        <KpiLink
-          to="/complaints?status=open"
-          label="Currently open"
-          value={summaryQ.data?.open ?? '—'}
-          emphasis="primary"
-        />
-        <KpiLink
-          to="/complaints?priority=critical"
-          label="High / critical"
-          value={summaryQ.data?.highPriority ?? '—'}
-          emphasis="warn"
-        />
+        <KpiLink to="/complaints?status=open" label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
+        <KpiLink to="/complaints?priority=critical" label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
         <Kpi
-          label={`Avg time to close (last ${days}d)`}
+          label={`Avg time to close (${days}d)`}
           value={latencyQ.data?.avgHours == null ? '—' : formatHours(latencyQ.data.avgHours)}
           sub={latencyQ.data?.count ? `over ${latencyQ.data.count} resolutions` : undefined}
         />
       </div>
 
       {/* Trend */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Complaint volume</h3>
-          <span className="muted" style={{ fontSize: 12 }}>by complaint date · zero-filled</span>
-          <span className="spacer" />
-          <WindowToggle days={days} onChange={setDays} />
-        </div>
+      <Card
+        title="Complaint volume"
+        subtitle="by complaint date · zero-filled"
+        headerAction={<WindowToggle days={days} onChange={setDays} />}
+      >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
         {!trendQ.isLoading && trendTotal === 0 && <NoTrendData days={days} />}
         {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} />}
-        <div className="muted" style={{ fontSize: 12, textAlign: 'right', marginTop: 4 }}>
+        <div className="text-right text-xs text-text-muted mt-2">
           {trendTotal} complaints in {days} days
         </div>
-      </div>
+      </Card>
 
       {/* Status pie + Priority bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12, marginTop: 16 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PiePanel
           title="By status"
           data={(statusQ.data ?? []).map((r) => ({
@@ -159,7 +148,8 @@ function ManagerDashboard() {
         <BarPanel
           title="By priority"
           data={(priorityQ.data ?? []).map((r) => ({
-            key: r.priority, count: r.count,
+            key: r.priority,
+            count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
             link: `/complaints?priority=${encodeURIComponent(r.priority)}`,
           }))}
@@ -168,7 +158,7 @@ function ManagerDashboard() {
       </div>
 
       {/* Department + Aging */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12, marginTop: 12 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BarPanel
           title="By department"
           data={(deptQ.data ?? []).map((r) => ({
@@ -188,19 +178,13 @@ function ManagerDashboard() {
       </div>
 
       {/* Resolution latency */}
-      <div className="card" style={{ marginTop: 12 }}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Resolution latency</h3>
-          <span className="muted" style={{ fontSize: 12 }}>created → resolved/closed · last {days} days</span>
-        </div>
+      <Card title="Resolution latency" subtitle={`created → resolved/closed · last ${days} days`}>
         {latencyQ.isLoading && <p className="muted">Loading…</p>}
         {!latencyQ.isLoading && (latencyQ.data?.count ?? 0) === 0 && (
           <p className="muted">No complaints have been resolved or closed in the last {days} days.</p>
         )}
-        {!latencyQ.isLoading && latencyQ.data && latencyQ.data.count > 0 && (
-          <LatencyDetail data={latencyQ.data} />
-        )}
-      </div>
+        {!latencyQ.isLoading && latencyQ.data && latencyQ.data.count > 0 && <LatencyDetail data={latencyQ.data} />}
+      </Card>
     </section>
   );
 }
@@ -212,12 +196,12 @@ function UserDashboard() {
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
   const myDeptName = departmentsQ.data?.find((d) => d.id === user?.departmentId)?.name ?? 'your department';
 
-  const summaryQ  = useQuery({ queryKey: ['dashboard', 'summary', 'mine'],     queryFn: () => DashboardService.summary() });
-  const statusQ   = useQuery({ queryKey: ['dashboard', 'by-status', 'mine'],   queryFn: () => DashboardService.byStatus() });
+  const summaryQ = useQuery({ queryKey: ['dashboard', 'summary', 'mine'], queryFn: () => DashboardService.summary() });
+  const statusQ = useQuery({ queryKey: ['dashboard', 'by-status', 'mine'], queryFn: () => DashboardService.byStatus() });
   const priorityQ = useQuery({ queryKey: ['dashboard', 'by-priority', 'mine'], queryFn: () => DashboardService.byPriority() });
-  const agingQ    = useQuery({ queryKey: ['dashboard', 'aging', 'mine'],       queryFn: () => DashboardService.aging() });
+  const agingQ = useQuery({ queryKey: ['dashboard', 'aging', 'mine'], queryFn: () => DashboardService.aging() });
 
-  const [days, setDays] = useState(30);
+  const [days, setDays] = React.useState(30);
   const trendQ = useQuery({ queryKey: ['dashboard', 'by-date', 'mine', days], queryFn: () => DashboardService.byDate(days) });
   const trendSeries = useZeroFilledTrend(trendQ.data?.data, days);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
@@ -225,33 +209,31 @@ function UserDashboard() {
   const linkBase = `/complaints?departmentId=${user?.departmentId ?? ''}`;
 
   return (
-    <section>
-      <div className="row" style={{ marginBottom: 4 }}>
-        <h1 style={{ margin: 0 }}>Dashboard</h1>
-        <span className="badge badge-primary" style={{ marginLeft: 8 }}>{myDeptName}</span>
+    <section className="space-y-6">
+      <div>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
+          <Badge variant="primary">{myDeptName}</Badge>
+        </div>
+        <p className="text-sm text-text-muted mt-1">Showing complaints assigned to your department.</p>
       </div>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Showing complaints assigned to your department.
-      </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KpiLink to={linkBase} label="Total complaints" value={summaryQ.data?.total ?? '—'} />
         <KpiLink to={`${linkBase}&status=open`} label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
         <KpiLink to={`${linkBase}&priority=critical`} label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>Volume in your department</h3>
-          <span className="spacer" />
-          <WindowToggle days={days} onChange={setDays} />
-        </div>
+      <Card
+        title="Volume in your department"
+        headerAction={<WindowToggle days={days} onChange={setDays} />}
+      >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
         {!trendQ.isLoading && trendTotal === 0 && <NoTrendData days={days} />}
         {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} />}
-      </div>
+      </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12, marginTop: 12 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PiePanel
           title="By status"
           data={(statusQ.data ?? []).map((r) => ({
@@ -265,7 +247,8 @@ function UserDashboard() {
         <BarPanel
           title="By priority"
           data={(priorityQ.data ?? []).map((r) => ({
-            key: r.priority, count: r.count,
+            key: r.priority,
+            count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
             link: `${linkBase}&priority=${encodeURIComponent(r.priority)}`,
           }))}
@@ -273,8 +256,7 @@ function UserDashboard() {
         />
       </div>
 
-      <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ marginTop: 0 }}>Open complaint aging</h3>
+      <Card title="Open complaint aging">
         {agingQ.isLoading && <p className="muted">Loading…</p>}
         {agingQ.data && (
           <BarPanel
@@ -283,7 +265,7 @@ function UserDashboard() {
             loading={false}
           />
         )}
-      </div>
+      </Card>
     </section>
   );
 }
@@ -291,7 +273,7 @@ function UserDashboard() {
 // ─── shared bits ─────────────────────────────────────────────────────────
 
 function useZeroFilledTrend(raw: { date: string; count: number }[] | undefined, days: number) {
-  return useMemo(() => {
+  return React.useMemo(() => {
     const counts = new Map((raw ?? []).map((p) => [p.date, p.count]));
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
@@ -307,88 +289,84 @@ function useZeroFilledTrend(raw: { date: string; count: number }[] | undefined, 
 }
 
 function Kpi({
-  label, value, sub, emphasis,
-}: { label: string; value: number | string; sub?: string; emphasis?: 'primary' | 'warn' }) {
-  // Use the teal accent for KPI emphasis — the slate primary doesn't pop
-  // at 32px on a white card.
+  label,
+  value,
+  sub,
+  emphasis,
+}: {
+  label: string;
+  value: number | string;
+  sub?: string;
+  emphasis?: 'primary' | 'warn';
+}) {
   const accent =
-    emphasis === 'primary' ? 'var(--accent)' :
-    emphasis === 'warn'    ? 'var(--warn)'    : 'var(--text)';
+    emphasis === 'primary' ? 'text-primary' :
+    emphasis === 'warn' ? 'text-warn' : 'text-text-main';
+  const accentBorder =
+    emphasis === 'primary' ? 'border-l-4 border-l-primary' :
+    emphasis === 'warn' ? 'border-l-4 border-l-warn' : '';
   return (
-    <div className="card">
-      <div className="muted" style={{ fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+    <div className={cn('p-5 bg-surface border border-border rounded-[10px] shadow-sm', accentBorder)}>
+      <p className={cn('text-xs font-semibold uppercase tracking-wider mb-1', emphasis ? accent : 'text-text-muted')}>
         {label}
+      </p>
+      <div className="flex items-baseline gap-2">
+        <span className={cn('text-3xl font-bold tabular-nums tracking-tight', accent)}>{value}</span>
+        {sub && <span className="text-xs text-text-muted font-normal">{sub}</span>}
       </div>
-      <div
-        className="tabular-nums"
-        style={{ fontSize: 32, fontWeight: 600, marginTop: 6, color: accent, letterSpacing: '-0.01em' }}
-      >
-        {value}
-      </div>
-      {sub && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
 
 function KpiLink({
-  to, label, value, sub, emphasis,
-}: { to: string; label: string; value: number | string; sub?: string; emphasis?: 'primary' | 'warn' }) {
+  to,
+  label,
+  value,
+  sub,
+  emphasis,
+}: {
+  to: string;
+  label: string;
+  value: number | string;
+  sub?: string;
+  emphasis?: 'primary' | 'warn';
+}) {
   return (
     <Link
       to={to}
-      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-      className="kpi-link"
+      className="block transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-[10px]"
       title={`Open ${label.toLowerCase()} list`}
     >
-      <div
-        className="card"
-        style={{
-          cursor: 'pointer',
-          transition: 'transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'translateY(-1px)';
-          e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-          e.currentTarget.style.borderColor = 'var(--border-strong)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'none';
-          e.currentTarget.style.boxShadow = '';
-          e.currentTarget.style.borderColor = '';
-        }}
-      >
-        <Kpi label={label} value={value} sub={sub} emphasis={emphasis} />
-      </div>
+      <Kpi label={label} value={value} sub={sub} emphasis={emphasis} />
     </Link>
   );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: 'var(--surface-2)', padding: '8px 10px', borderRadius: 'var(--radius)' }}>
-      <div className="muted" style={{ fontSize: 11 }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value}</div>
+    <div className="bg-surface-2 px-3 py-2 rounded-md">
+      <div className="text-[11px] text-text-muted">{label}</div>
+      <div className="font-semibold">{value}</div>
     </div>
   );
 }
 
 function WindowToggle({ days, onChange }: { days: number; onChange: (n: number) => void }) {
   return (
-    <div className="row" style={{ gap: 4 }}>
+    <div className="flex items-center gap-1 bg-surface-2/50 p-0.5 rounded-md border border-border">
       {WINDOWS.map((w) => (
         <button
           key={w.days}
           onClick={() => onChange(w.days)}
-          style={{
-            padding: '4px 10px',
-            border: '1px solid var(--border-strong)',
-            borderRadius: 'var(--radius)',
-            background: days === w.days ? 'var(--primary)' : 'var(--surface)',
-            color: days === w.days ? 'white' : 'var(--text)',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >{w.label}</button>
+          className={cn(
+            'px-3 py-1 text-xs font-medium rounded-[5px] transition-all',
+            days === w.days
+              ? 'bg-surface text-text-main shadow-sm ring-1 ring-border'
+              : 'text-text-muted hover:text-text-main',
+          )}
+        >
+          {w.label}
+        </button>
       ))}
     </div>
   );
@@ -396,7 +374,7 @@ function WindowToggle({ days, onChange }: { days: number; onChange: (n: number) 
 
 function NoTrendData({ days }: { days: number }) {
   return (
-    <p className="muted">
+    <p className="text-text-muted text-sm">
       No complaints with a complaint date in the last {days} days. Set a complaint date when
       creating new ones to populate this chart.
     </p>
@@ -405,43 +383,47 @@ function NoTrendData({ days }: { days: number }) {
 
 function TrendChart({ data }: { data: { date: string; count: number }[] }) {
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={240}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={ACCENT} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+            <stop offset="0%" stopColor={PRIMARY} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={PRIMARY} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-        <XAxis dataKey="date" tick={{ fontSize: 11, fill: SLATE_500 }} interval="preserveStartEnd" minTickGap={40} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />
-        <Tooltip />
-        <Area type="monotone" dataKey="count" stroke={ACCENT} fill="url(#trendFill)" strokeWidth={2} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+        <XAxis dataKey="date" tick={{ fontSize: 11, fill: SLATE_500 }} interval="preserveStartEnd" minTickGap={40} axisLine={false} tickLine={false} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Area type="monotone" dataKey="count" stroke={PRIMARY} fill="url(#trendFill)" strokeWidth={2} />
       </AreaChart>
     </ResponsiveContainer>
   );
 }
 
-function LatencyDetail({ data }: { data: NonNullable<Awaited<ReturnType<typeof DashboardService.resolutionLatency>>> }) {
+function LatencyDetail({
+  data,
+}: {
+  data: NonNullable<Awaited<ReturnType<typeof DashboardService.resolutionLatency>>>;
+}) {
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         <Stat label="Resolutions" value={String(data.count)} />
-        <Stat label="Average"     value={formatHours(data.avgHours    ?? 0)} />
-        <Stat label="Median"      value={formatHours(data.medianHours ?? 0)} />
-        <Stat label="P95"         value={formatHours(data.p95Hours    ?? 0)} />
+        <Stat label="Average" value={formatHours(data.avgHours ?? 0)} />
+        <Stat label="Median" value={formatHours(data.medianHours ?? 0)} />
+        <Stat label="P95" value={formatHours(data.p95Hours ?? 0)} />
       </div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data.perWeek} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-          <XAxis dataKey="week" tick={{ fontSize: 11, fill: SLATE_500 }} />
-          <YAxis yAxisId="count" allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />
-          <YAxis yAxisId="hours" orientation="right" tick={{ fontSize: 11, fill: SLATE_500 }} />
-          <Tooltip />
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+          <XAxis dataKey="week" tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+          <YAxis yAxisId="count" allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+          <YAxis yAxisId="hours" orientation="right" tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+          <Tooltip contentStyle={tooltipStyle} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar yAxisId="count" dataKey="count"    name="Resolutions" fill={ACCENT} />
-          <Bar yAxisId="hours" dataKey="avgHours" name="Avg hours"   fill={WARN} />
+          <Bar yAxisId="count" dataKey="count" name="Resolutions" fill={PRIMARY} />
+          <Bar yAxisId="hours" dataKey="avgHours" name="Avg hours" fill={WARN} />
         </BarChart>
       </ResponsiveContainer>
     </>
@@ -449,7 +431,9 @@ function LatencyDetail({ data }: { data: NonNullable<Awaited<ReturnType<typeof D
 }
 
 function PiePanel({
-  title, data, loading,
+  title,
+  data,
+  loading,
 }: {
   title: string;
   data: { name: string; value: number; color: string; link?: string }[];
@@ -457,8 +441,7 @@ function PiePanel({
 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
-    <div className="card">
-      <h3 style={{ margin: '0 0 8px' }}>{title}</h3>
+    <Card title={title}>
       {loading && <p className="muted">Loading…</p>}
       {!loading && total === 0 && <p className="muted">No data yet.</p>}
       {!loading && total > 0 && (
@@ -468,25 +451,23 @@ function PiePanel({
               <Pie data={data} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
                 {data.map((d) => <Cell key={d.name} fill={d.color} />)}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle} />
             </PieChart>
           </ResponsiveContainer>
-          {/* Legend doubles as a click-through list — much more useful than recharts'
-              built-in legend for our case */}
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <ul className="list-none p-0 m-0 flex flex-col gap-1 mt-2">
             {data.map((d) => (
               <li key={d.name}>
                 {d.link ? (
-                  <Link to={d.link} style={legendItemStyle}>
+                  <Link to={d.link} className="flex items-center gap-2 px-2 py-1 rounded-sm text-sm text-text-main hover:bg-surface-hover transition-colors">
                     <Dot color={d.color} />
-                    <span style={{ flex: 1 }}>{d.name}</span>
-                    <span className="mono muted">{d.value}</span>
+                    <span className="flex-1">{d.name}</span>
+                    <span className="font-mono text-xs text-text-muted">{d.value}</span>
                   </Link>
                 ) : (
-                  <div style={legendItemStyle}>
+                  <div className="flex items-center gap-2 px-2 py-1 text-sm">
                     <Dot color={d.color} />
-                    <span style={{ flex: 1 }}>{d.name}</span>
-                    <span className="mono muted">{d.value}</span>
+                    <span className="flex-1">{d.name}</span>
+                    <span className="font-mono text-xs text-text-muted">{d.value}</span>
                   </div>
                 )}
               </li>
@@ -494,12 +475,16 @@ function PiePanel({
           </ul>
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
 function BarPanel({
-  title, subtitle, data, loading, horizontal,
+  title,
+  subtitle,
+  data,
+  loading,
+  horizontal,
 }: {
   title: string;
   subtitle?: string;
@@ -509,13 +494,7 @@ function BarPanel({
 }) {
   const total = data.reduce((s, d) => s + d.count, 0);
   return (
-    <div className="card">
-      {(title || subtitle) && (
-        <div className="row" style={{ marginBottom: 8 }}>
-          {title && <h3 style={{ margin: 0 }}>{title}</h3>}
-          {subtitle && <span className="muted" style={{ fontSize: 12 }}>{subtitle}</span>}
-        </div>
-      )}
+    <Card title={title || undefined} subtitle={subtitle}>
       {loading && <p className="muted">Loading…</p>}
       {!loading && total === 0 && <p className="muted">No data yet.</p>}
       {!loading && total > 0 && (
@@ -526,34 +505,38 @@ function BarPanel({
               layout={horizontal ? 'vertical' : 'horizontal'}
               margin={{ top: 8, right: 8, left: horizontal ? 0 : -12, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-              {horizontal
-                ? <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />
-                : <XAxis dataKey="key" tick={{ fontSize: 11, fill: SLATE_500 }} interval={0} />}
-              {horizontal
-                ? <YAxis type="category" dataKey="key" width={120} tick={{ fontSize: 11, fill: SLATE_500 }} />
-                : <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} />}
-              <Tooltip />
-              <Bar dataKey="count" fill={ACCENT}>
-                {data.map((d, i) => <Cell key={i} fill={d.color ?? ACCENT} />)}
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+              {horizontal ? (
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+              ) : (
+                <XAxis dataKey="key" tick={{ fontSize: 11, fill: SLATE_500 }} interval={0} axisLine={false} tickLine={false} />
+              )}
+              {horizontal ? (
+                <YAxis type="category" dataKey="key" width={120} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+              ) : (
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+              )}
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="count" fill={PRIMARY} radius={[3, 3, 0, 0]}>
+                {data.map((d, i) => <Cell key={i} fill={d.color ?? PRIMARY} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
           {data.some((d) => d.link) && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <ul className="list-none p-0 m-0 flex flex-col gap-1 mt-2">
               {data.map((d) => (
                 <li key={d.key}>
                   {d.link ? (
-                    <Link to={d.link} style={legendItemStyle}>
-                      <Dot color={d.color ?? ACCENT} />
-                      <span style={{ flex: 1 }}>{d.key}</span>
-                      <span className="mono muted">{d.count}</span>
+                    <Link to={d.link} className="flex items-center gap-2 px-2 py-1 rounded-sm text-sm text-text-main hover:bg-surface-hover transition-colors">
+                      <Dot color={d.color ?? PRIMARY} />
+                      <span className="flex-1">{d.key}</span>
+                      <span className="font-mono text-xs text-text-muted">{d.count}</span>
                     </Link>
                   ) : (
-                    <div style={legendItemStyle}>
-                      <Dot color={d.color ?? ACCENT} />
-                      <span style={{ flex: 1 }}>{d.key}</span>
-                      <span className="mono muted">{d.count}</span>
+                    <div className="flex items-center gap-2 px-2 py-1 text-sm">
+                      <Dot color={d.color ?? PRIMARY} />
+                      <span className="flex-1">{d.key}</span>
+                      <span className="font-mono text-xs text-text-muted">{d.count}</span>
                     </div>
                   )}
                 </li>
@@ -562,7 +545,7 @@ function BarPanel({
           )}
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -570,21 +553,17 @@ function Dot({ color }: { color: string }) {
   return (
     <span
       aria-hidden
-      style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }}
+      className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+      style={{ background: color }}
     />
   );
 }
 
-const legendItemStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '4px 8px',
-  borderRadius: 'var(--radius-sm)',
-  color: 'var(--text)',
-  textDecoration: 'none',
-  fontSize: 13,
-  transition: 'background-color 120ms ease',
+const tooltipStyle: React.CSSProperties = {
+  borderRadius: 8,
+  border: '1px solid var(--border)',
+  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+  fontSize: 12,
 };
 
 function formatHours(h: number): string {
