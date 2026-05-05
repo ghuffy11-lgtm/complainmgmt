@@ -1,30 +1,26 @@
-import { type FormEvent, useState } from 'react';
+import * as React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ShieldCheck } from 'lucide-react';
 import { AuthService } from '../services/auth.service';
 import { useAuthStore } from '../store/auth-store';
 import { Button } from '../components/ui/Button';
-import { IconLock, IconShield, IconUser } from '../components/ui/Icons';
+import { Card } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
 
 /**
- * Two-pane sign-in layout (ported from the Lovable theme spec):
- *   - Left: branded sidebar-coloured panel with the brand mark and the
- *     "calm, careful complaint review" tagline. Hidden on narrow viewports
- *     via the `.login-brand` media query in styles.css.
- *   - Right: form area, centred.
- *
- * Keeps our existing auth flow — JWT + refresh storage + ACCOUNT_LOCKED
- * handling. Visual changes only.
+ * Single-card sign-in: centred 400px card on an ambient blue glow.
+ * Auth flow is unchanged — JWT + refresh storage + ACCOUNT_LOCKED handling.
  */
 export function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
   const setSession = useAuthStore((s) => s.setSession);
   const nav = useNavigate();
   const location = useLocation() as { state?: { from?: { pathname: string } } };
 
-  const onSubmit = async (e: FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -45,125 +41,79 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-grid">
-      {/* Brand panel — hidden < 960px (see styles.css .login-brand) */}
-      <aside className="login-brand">
-        <div style={brandRowStyle}>
-          <span style={brandMarkStyle}><IconShield size={20} /></span>
-          <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>Complaint Tracking</div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Quality &amp; Patient Safety</div>
+    <div className="min-h-screen flex items-center justify-center bg-bg relative overflow-hidden p-6">
+      {/* Ambient background glow */}
+      <div
+        aria-hidden
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
+        style={{ background: 'rgb(37 99 235 / 0.05)', filter: 'blur(100px)' }}
+      />
+
+      <div className="w-full max-w-[400px] relative z-10">
+        <div className="flex flex-col items-center mb-8 text-center">
+          <div
+            className="w-16 h-16 rounded-2xl text-white shadow-lg mb-4 flex items-center justify-center"
+            style={{
+              background: 'linear-gradient(135deg, var(--primary), var(--primary-active))',
+              boxShadow: '0 0 0 8px rgb(37 99 235 / 0.05), 0 10px 25px rgb(15 23 42 / 0.10)',
+            }}
+          >
+            <ShieldCheck size={36} strokeWidth={1.5} />
           </div>
-        </div>
-
-        <div style={{ maxWidth: 'var(--reading-max)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600, letterSpacing: '-0.01em' }}>
-            Calm, careful complaint review.
+          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">
+            Complaint Tracking
+            <span className="block text-sm font-medium text-text-muted mt-1">
+              Hadi Clinic · Quality &amp; Patient Safety
+            </span>
           </h1>
-          <p style={{ margin: 0, fontSize: 14, opacity: 0.75, maxWidth: 460 }}>
-            A clinical workspace for triaging patient complaints, tracking investigations, and
-            closing the loop with evidence.
-          </p>
+          <p className="text-text-muted mt-2 text-sm">Sign in to continue to the portal</p>
         </div>
 
-        <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: '0.02em' }}>
-          Hadi Clinic · Internal use only
-        </div>
-      </aside>
-
-      {/* Form panel */}
-      <section className="login-form">
-        <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <header style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.005em' }}>Sign in</h2>
-            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              Use your hospital credentials to continue.
-            </p>
-          </header>
-
-          <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div className="field">
-              <label htmlFor="login-username">Username</label>
-              <div style={{ position: 'relative' }}>
-                <span style={inputIconStyle} aria-hidden><IconUser size={14} /></span>
-                <input
-                  id="login-username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoFocus
-                  autoComplete="username"
-                  required
-                  style={{ paddingLeft: 36 }}
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <label htmlFor="login-password">Password</label>
-              <div style={{ position: 'relative' }}>
-                <span style={inputIconStyle} aria-hidden><IconLock size={14} /></span>
-                <input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                  style={{ paddingLeft: 36 }}
-                />
-              </div>
-            </div>
+        <Card className="p-8 shadow-xl">
+          <form onSubmit={onSubmit} className="space-y-1">
+            <Input
+              label="Username"
+              placeholder="e.g. sjohnson"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              autoComplete="username"
+              required
+            />
+            <Input
+              label="Password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
 
             {error && (
-              <div role="alert" style={errorBoxStyle}>{error}</div>
+              <div
+                role="alert"
+                className="rounded-md text-[13px] px-3 py-2 mb-3"
+                style={{
+                  background: 'var(--danger-bg)',
+                  border: '1px solid var(--danger-border)',
+                  color: 'var(--danger)',
+                }}
+              >
+                {error}
+              </div>
             )}
 
-            <Button type="submit" disabled={loading} style={{ width: '100%', height: 40 }}>
-              {loading ? 'Signing in…' : 'Sign in'}
+            <Button type="submit" className="w-full h-11" isLoading={loading}>
+              Sign in
             </Button>
           </form>
+        </Card>
 
-          <div style={{ fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
-            Hadi Clinic · Internal use only
-          </div>
-        </div>
-      </section>
+        <footer className="mt-8 text-center text-text-subtle text-xs">
+          Hadi Clinic · Internal use only
+        </footer>
+      </div>
     </div>
   );
 }
-
-const brandRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-};
-
-const brandMarkStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 36,
-  height: 36,
-  borderRadius: 8,
-  background: 'var(--sidebar-accent)',
-  color: 'var(--sidebar)',
-};
-
-const inputIconStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: 12,
-  top: '50%',
-  transform: 'translateY(-50%)',
-  display: 'inline-flex',
-  color: 'var(--text-subtle)',
-  pointerEvents: 'none',
-};
-
-const errorBoxStyle: React.CSSProperties = {
-  background: 'var(--danger-bg)',
-  border: '1px solid var(--danger-border)',
-  color: 'var(--danger)',
-  padding: '8px 12px',
-  borderRadius: 'var(--radius)',
-  fontSize: 13,
-};
