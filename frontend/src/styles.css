@@ -218,32 +218,6 @@
   button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(37 99 235 / 0.25); }
 }
 
-/* ─── legacy compat (removed as pages are ported) ──────────────────────── */
-.login-grid {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 1fr;
-}
-.login-brand {
-  display: none;
-  flex-direction: column;
-  justify-content: space-between;
-  background: linear-gradient(180deg, var(--sidebar) 0%, var(--sidebar-2) 100%);
-  color: var(--sidebar-text);
-  padding: 40px 48px;
-}
-.login-form {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  padding: 48px 24px;
-}
-@media (min-width: 960px) {
-  .login-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .login-brand { display: flex; }
-}
-
 @layer components {
   .card {
     @apply bg-surface border border-border rounded-[10px] p-6 shadow-sm;
