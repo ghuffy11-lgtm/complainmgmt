@@ -173,21 +173,21 @@ export class DashboardController {
     const dept = this.resolveScope(actor, departmentId);
     const range = parseRange(fromParam, toParam, daysParam);
 
-    // $1 carries either the days int (legacy mode) or NULL (range mode);
-    // $2 / $3 carry the YYYY-MM-DD bounds in range mode. The WHERE clause
-    // adapts so both shapes share one query.
+    // Build params + WHERE in lockstep so we never bind a slot the SQL
+    // doesn't reference (Postgres rejects "bind message supplies N
+    // parameters, but prepared statement requires M" when they drift).
     const params: unknown[] =
-      range.kind === 'days' ? [range.days, null, null] : [null, range.from, range.to];
-    let scopeClause = '';
-    if (dept !== null) {
-      scopeClause = ' AND c.assigned_department_id = ANY($4::bigint[])';
-      params.push(dept.map((d) => Number(d)));
-    }
-
+      range.kind === 'days' ? [range.days] : [range.from, range.to];
     const whereResolved =
       range.kind === 'days'
         ? `resolved_at >= CURRENT_DATE - $1 * INTERVAL '1 day'`
-        : `resolved_at::date BETWEEN $2::date AND $3::date`;
+        : `resolved_at::date BETWEEN $1::date AND $2::date`;
+    let scopeClause = '';
+    if (dept !== null) {
+      const deptIdx = params.length + 1;
+      scopeClause = ` AND c.assigned_department_id = ANY($${deptIdx}::bigint[])`;
+      params.push(dept.map((d) => Number(d)));
+    }
 
     const perComplaint = await this.complaints.manager.query<
       Array<{ hours: number; resolved_week: string }>

@@ -72,10 +72,15 @@ export function Select({
     return map;
   }, [options]);
 
+  // Radix forbids `<Item value="">` — empty string is reserved on the Root
+  // for "no selection / show placeholder". For the optional clear entry we
+  // use a sentinel and translate it back to '' at the boundary.
+  const CLEAR_SENTINEL = '__select_clear__';
+
   return (
     <RadixSelect.Root
       value={value}
-      onValueChange={onChange}
+      onValueChange={(v) => onChange(v === CLEAR_SENTINEL ? '' : v)}
       disabled={disabled}
     >
       <RadixSelect.Trigger
@@ -121,7 +126,7 @@ export function Select({
         >
           <RadixSelect.Viewport className="p-1 max-h-[min(60vh,360px)]">
             {allowClear && (
-              <Item value="" label={clearLabel} muted />
+              <Item value={CLEAR_SENTINEL} label={clearLabel} muted />
             )}
             {Array.from(groups.entries()).map(([group, items], gi) => (
               <React.Fragment key={group || `__g${gi}`}>
