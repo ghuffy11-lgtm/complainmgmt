@@ -65,8 +65,8 @@ export function LoginPage() {
        *  soft-focus mid-ground so the form card holds full focus. */}
       <div
         aria-hidden
-        className="absolute inset-0 pointer-events-none backdrop-blur-sm"
-        style={{ background: 'rgb(15 23 42 / 0.65)' }}
+        className="absolute inset-0 pointer-events-none backdrop-blur-[4px]"
+        style={{ background: 'rgb(15 23 42 / 0.35)' }}
       />
 
       <div className="w-full max-w-[400px] relative z-10">
@@ -99,7 +99,7 @@ export function LoginPage() {
           <p className="text-white/85 mt-2 text-sm drop-shadow-sm">{branding.loginTagline}</p>
         </div>
 
-        <Card className="p-8 shadow-xl bg-white/85 backdrop-blur-md border border-white/20">
+        <Card className="p-8 shadow-xl bg-white/65 backdrop-blur-md border border-white/20">
           <form onSubmit={onSubmit} className="space-y-1">
             <Input
               label="Username"
