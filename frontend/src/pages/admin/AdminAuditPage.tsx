@@ -5,6 +5,7 @@ import { AuditTimeline } from '../../components/AuditTimeline';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
+import { titleize } from '../../lib/utils';
 import { DynamicFieldsService } from '../../services/dynamic-fields.service';
 
 const ACTIONS = [
@@ -62,7 +63,7 @@ export function AdminAuditPage() {
           onChange={(v) => setFilters((f) => ({ ...f, action: v || undefined, page: 1 }))}
           allowClear
           clearLabel="Any action"
-          options={ACTIONS.filter((a) => a).map((a) => ({ value: a, label: a }))}
+          options={ACTIONS.filter((a) => a).map((a) => ({ value: a, label: titleize(a) }))}
         />
         <span className="spacer" />
         <Button variant="ghost" onClick={() => setFilters({ page: 1, pageSize: 50 })}>Clear</Button>

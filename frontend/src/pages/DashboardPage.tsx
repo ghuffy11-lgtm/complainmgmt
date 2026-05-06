@@ -23,7 +23,7 @@ import { useBranding } from '../hooks/useBranding';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Select } from '../components/ui/Select';
-import { cn } from '../lib/utils';
+import { cn, titleize } from '../lib/utils';
 
 const WINDOWS = [
   { label: '30 days', days: 30 },
@@ -198,7 +198,7 @@ function ManagerDashboard() {
         <PiePanel
           title="By status"
           data={(statusQ.data ?? []).map((r) => ({
-            name: r.status.replace('_', ' '),
+            name: titleize(r.status),
             value: r.count,
             color: STATUS_COLORS[r.status] ?? SLATE_500,
             link: complaintsLink({ departmentId, status: r.status }),
@@ -208,7 +208,7 @@ function ManagerDashboard() {
         <BarPanel
           title="By priority"
           data={(priorityQ.data ?? []).map((r) => ({
-            key: r.priority,
+            key: titleize(r.priority),
             count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
             link: complaintsLink({ departmentId, priority: r.priority }),
@@ -413,7 +413,7 @@ function UserDashboard() {
         <PiePanel
           title="By status"
           data={(statusQ.data ?? []).map((r) => ({
-            name: r.status.replace('_', ' '),
+            name: titleize(r.status),
             value: r.count,
             color: STATUS_COLORS[r.status] ?? SLATE_500,
             link: `${linkBase}${sep}status=${encodeURIComponent(r.status)}`,
@@ -423,7 +423,7 @@ function UserDashboard() {
         <BarPanel
           title="By priority"
           data={(priorityQ.data ?? []).map((r) => ({
-            key: r.priority,
+            key: titleize(r.priority),
             count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
             link: `${linkBase}${sep}priority=${encodeURIComponent(r.priority)}`,

@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { Select } from '../../components/ui/Select';
+import { titleize } from '../../lib/utils';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { DynamicField, FieldLocking, FieldType } from '../../types/api';
@@ -180,7 +181,7 @@ function FieldEditor(props: EditorProps) {
             value={type}
             onChange={(v) => setType(v as FieldType)}
             disabled={!isCreate}
-            options={TYPES.map((t) => ({ value: t, label: t }))}
+            options={TYPES.map((t) => ({ value: t, label: titleize(t) }))}
           />
         </div>
         <div className="field" style={{ gridColumn: '1 / -1' }}>
@@ -194,7 +195,7 @@ function FieldEditor(props: EditorProps) {
           <Select
             value={locking}
             onChange={(v) => setLocking(v as FieldLocking)}
-            options={LOCKINGS.map((l) => ({ value: l, label: l }))}
+            options={LOCKINGS.map((l) => ({ value: l, label: titleize(l) }))}
           />
         </div>
         <div className="field row" style={{ gridColumn: '1 / -1' }}>

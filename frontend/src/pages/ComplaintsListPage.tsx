@@ -12,7 +12,7 @@ import { DateInput } from '../components/ui/DateInput';
 import { Select } from '../components/ui/Select';
 import { Skeleton } from '../components/ui/Skeleton';
 import { usePermissions } from '../hooks/usePermissions';
-import { cn } from '../lib/utils';
+import { cn, titleize } from '../lib/utils';
 import type { ComplaintPriority, ComplaintStatus, DynamicField } from '../types/api';
 
 const STATUSES: ComplaintStatus[] = ['open', 'in_progress', 'resolved', 'closed', 'rejected'];
@@ -171,7 +171,7 @@ export function ComplaintsListPage() {
             onChange={(v) => apply({ status: (v || undefined) as ComplaintStatus | undefined })}
             allowClear
             clearLabel="Any status"
-            options={STATUSES.map((s) => ({ value: s, label: s.replace('_', ' ') }))}
+            options={STATUSES.map((s) => ({ value: s, label: titleize(s) }))}
           />
 
           <Select
@@ -182,7 +182,7 @@ export function ComplaintsListPage() {
             onChange={(v) => apply({ priority: (v || undefined) as ComplaintPriority | undefined })}
             allowClear
             clearLabel="Any priority"
-            options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+            options={PRIORITIES.map((p) => ({ value: p, label: titleize(p) }))}
           />
 
           <Select
@@ -352,7 +352,7 @@ export function StatusBadge({ status }: { status: ComplaintStatus }) {
     status === 'in_progress' ? 'badge-warn' :
     status === 'resolved' ? 'badge-success' :
     status === 'rejected' ? 'badge-danger' : '';
-  return <span className={cn('badge', cls)}>{status.replace('_', ' ')}</span>;
+  return <span className={cn('badge', cls)}>{titleize(status)}</span>;
 }
 
 export function PriorityBadge({ priority }: { priority: ComplaintPriority }) {
@@ -360,7 +360,7 @@ export function PriorityBadge({ priority }: { priority: ComplaintPriority }) {
     priority === 'critical' ? 'badge-danger' :
     priority === 'high' ? 'badge-warn' :
     priority === 'low' ? 'badge-success' : '';
-  return <span className={cn('badge', cls)}>{priority}</span>;
+  return <span className={cn('badge', cls)}>{titleize(priority)}</span>;
 }
 
 function SearchableFieldInput({

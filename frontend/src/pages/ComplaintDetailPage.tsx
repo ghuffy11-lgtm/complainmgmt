@@ -16,6 +16,7 @@ import { DateInput } from '../components/ui/DateInput';
 import { Select } from '../components/ui/Select';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
+import { titleize } from '../lib/utils';
 import { PriorityBadge, StatusBadge } from './ComplaintsListPage';
 import type { ComplaintPriority, ComplaintStatus } from '../types/api';
 
@@ -241,7 +242,7 @@ export function ComplaintDetailPage() {
                   value={c.status}
                   disabled={!canEdit}
                   onChange={(v) => statusM.mutate(v as ComplaintStatus)}
-                  options={STATUSES.map((s) => ({ value: s, label: s.replace('_', ' ') }))}
+                  options={STATUSES.map((s) => ({ value: s, label: titleize(s) }))}
                 />
               </div>
               <div className="field">
@@ -250,7 +251,7 @@ export function ComplaintDetailPage() {
                   value={c.priority}
                   disabled={!canEdit}
                   onChange={(v) => priorityM.mutate(v as ComplaintPriority)}
-                  options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+                  options={PRIORITIES.map((p) => ({ value: p, label: titleize(p) }))}
                 />
               </div>
               <div className="field">

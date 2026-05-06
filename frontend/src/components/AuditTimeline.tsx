@@ -1,4 +1,5 @@
 import type { AuditEntry, DynamicField } from '../types/api';
+import { titleize } from '../lib/utils';
 
 type Props = {
   entries: AuditEntry[];
@@ -82,14 +83,14 @@ function describe(e: AuditEntry, fieldsByKey?: Map<string, DynamicField>): strin
       return ref ? `Created complaint ${ref}` : 'Created complaint';
     }
     case 'update': {
-      if (e.fieldKey === '__status__') return `Changed status: ${fmt(e.oldValue)} → ${fmt(e.newValue)}`;
-      if (e.fieldKey === '__priority__') return `Changed priority: ${fmt(e.oldValue)} → ${fmt(e.newValue)}`;
+      if (e.fieldKey === '__status__') return `Changed status: ${titleize(String(e.oldValue ?? ''))} → ${titleize(String(e.newValue ?? ''))}`;
+      if (e.fieldKey === '__priority__') return `Changed priority: ${titleize(String(e.oldValue ?? ''))} → ${titleize(String(e.newValue ?? ''))}`;
       return `Updated ${label(e.fieldKey)}`;
     }
     case 'lock_override':
       return `Override on locked field "${label(e.fieldKey)}"`;
     case 'reopen':
-      return `Reopened: ${fmt(e.oldValue)} → ${fmt(e.newValue)}`;
+      return `Reopened: ${titleize(String(e.oldValue ?? ''))} → ${titleize(String(e.newValue ?? ''))}`;
     case 'assign': {
       const nv = e.newValue as { departmentId?: string | null; userId?: string | null } | null;
       if (!nv) return 'Reassigned';

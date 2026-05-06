@@ -13,7 +13,7 @@ import { DateInput } from '../components/ui/DateInput';
 import { Select } from '../components/ui/Select';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
-import { cn } from '../lib/utils';
+import { cn, titleize } from '../lib/utils';
 import {
   ACCEPT_ATTR,
   ALLOWED_MIME_LABEL,
@@ -175,7 +175,7 @@ export function ComplaintCreatePage() {
               <Select
                 value={priority}
                 onChange={(v) => setPriority(v as ComplaintPriority)}
-                options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+                options={PRIORITIES.map((p) => ({ value: p, label: titleize(p) }))}
               />
             </div>
 
