@@ -16,20 +16,43 @@ export type DateInputProps = Omit<
 >;
 
 export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
-  function DateInput({ className, onClick, readOnly, ...rest }, ref) {
+  function DateInput({ className, onClick, onMouseDown, onFocus, ...rest }, ref) {
+    // Open the calendar from any user gesture that lands on this field.
+    // Doing this from onMouseDown (instead of onClick) catches the case
+    // where the click target is the small icon vs. the rest of the input
+    // and prevents the default behaviour where Chrome only opens on the
+    // icon. We don't make the input readOnly — Chrome refuses to open
+    // showPicker() on readOnly inputs in some versions, which is what
+    // killed the picker in v1.2.x.
+    const triggerPicker = (el: HTMLInputElement | null) => {
+      const withPicker = el as (HTMLInputElement & { showPicker?: () => void }) | null;
+      try {
+        withPicker?.showPicker?.();
+      } catch {
+        // Some browsers throw when called outside a user gesture; ignore
+        // — the native picker behaviour is the fallback.
+      }
+    };
     return (
       <input
         ref={ref}
         type="date"
-        // `readOnly` keeps the keyboard from popping up + prevents the
-        // partial-edit case where the user types "20" and walks away.
-        // showPicker() is the only way to set the value.
-        readOnly={readOnly ?? true}
+        onMouseDown={(e) => {
+          // Prevent the focus that would otherwise place a caret in the
+          // input; we want the picker, not the caret.
+          e.preventDefault();
+          triggerPicker(e.currentTarget);
+          onMouseDown?.(e);
+        }}
         onClick={(e) => {
-          // Open the native calendar overlay on any click in the field.
-          // Older browsers without showPicker() get the default behaviour.
-          (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+          triggerPicker(e.currentTarget);
           onClick?.(e);
+        }}
+        onFocus={(e) => {
+          // Keyboard-tab focus: hit Space/Enter on the input opens it,
+          // but we also want it to be obvious — leave native handling
+          // here. (No picker call on focus to avoid double-open.)
+          onFocus?.(e);
         }}
         className={cn(
           'h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm cursor-pointer',
