@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { errorMessage, useToast } from '../../components/ui/Toast';
+import { cn } from '../../lib/utils';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { Department, Role, UserSummary } from '../../types/api';
 
@@ -320,13 +321,10 @@ function DepartmentPicker({
                 type="button"
                 onClick={() => setPrimary(d.id)}
                 title={isPrimary ? 'Primary department' : 'Make primary'}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 16,
-                  color: isPrimary ? 'var(--warn)' : 'var(--text-subtle)',
-                }}
+                className={cn(
+                  'bg-transparent border-0 cursor-pointer text-base',
+                  isPrimary ? 'text-warn' : 'text-text-subtle',
+                )}
               >
                 {isPrimary ? '★' : '☆'}
               </button>

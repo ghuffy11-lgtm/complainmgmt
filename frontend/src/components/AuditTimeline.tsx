@@ -52,9 +52,9 @@ export function AuditTimeline({
               )}
             </div>
             {hasDetails(e) && <Details entry={e} />}
-            {e.note && <div className="muted" style={{ fontSize: 12 }}>“{e.note}”</div>}
+            {e.note && <div className="muted text-xs">“{e.note}”</div>}
           </div>
-          <div className="mono muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }} title={new Date(e.occurredAt).toLocaleString()}>
+          <div className="mono muted text-xs whitespace-nowrap" title={new Date(e.occurredAt).toLocaleString()}>
             {formatTime(e.occurredAt)}
           </div>
         </div>
@@ -132,9 +132,9 @@ function hasDetails(e: AuditEntry): boolean {
 
 function Details({ entry }: { entry: AuditEntry }) {
   return (
-    <details style={{ marginTop: 4 }}>
-      <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>Details</summary>
-      <div className="mono" style={{ fontSize: 12, marginTop: 4 }}>
+    <details className="mt-1">
+      <summary className="cursor-pointer text-text-muted text-xs">Details</summary>
+      <div className="mono text-xs mt-1">
         <div>old: {fmt(entry.oldValue)}</div>
         <div>new: {fmt(entry.newValue)}</div>
       </div>

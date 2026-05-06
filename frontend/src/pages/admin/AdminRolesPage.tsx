@@ -199,7 +199,7 @@ function RoleEditor({
       <div className="col" style={{ opacity: grantedQ.isLoading ? 0.5 : 1 }}>
         {grouped.map((group) => (
           <div key={group.resource} className="card" style={{ background: 'var(--surface-2)' }}>
-            <div className="mono" style={{ fontWeight: 600, marginBottom: 6 }}>{group.resource}</div>
+            <div className="mono font-semibold mb-1.5">{group.resource}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {group.actions.map((p) => {
                 const checked = granted.has(p.id);
@@ -234,7 +234,7 @@ function RoleEditor({
 
       {canManage && (
         <div className="row-end" style={{ marginTop: 12, alignItems: 'center' }}>
-          {dirty && <span className="muted" style={{ fontSize: 12 }}>unsaved changes</span>}
+          {dirty && <span className="muted text-xs">unsaved changes</span>}
           <Button onClick={() => saveM.mutate()} disabled={saveM.isPending || !dirty}>
             {saveM.isPending ? 'Saving…' : 'Save'}
           </Button>
