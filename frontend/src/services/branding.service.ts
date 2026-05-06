@@ -23,7 +23,7 @@ export const BrandingService = {
   updateText(patch: Partial<Omit<Branding, 'logoUrl' | 'logoUpdatedAt'>>) {
     return api.post('/admin/branding', patch).then(() => undefined);
   },
-  /** Admin — upload a new logo. Backend caps at 512 KB. */
+  /** Admin — upload a new logo. Backend caps at 1 MB. */
   uploadLogo(file: File) {
     const fd = new FormData();
     fd.append('file', file);

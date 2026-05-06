@@ -322,7 +322,7 @@ Single-row-per-kind store for branding binary assets — bytes live here so json
 | kind | TEXT PK | `'logo'` is the only kind today; room for `'favicon'` etc. |
 | mime | TEXT NOT NULL | `image/png` \| `image/jpeg` \| `image/webp` \| `image/svg+xml` |
 | bytes | BYTEA NOT NULL | the image |
-| size_bytes | INTEGER NOT NULL | capped at 524288 (512 KB) at the API |
+| size_bytes | INTEGER NOT NULL | capped at 1048576 (1 MB) at the API |
 | updated_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | served as `Last-Modified` + used as cache-busting `?v=…` token on the public URL |
 | updated_by | BIGINT FK users.id | |
 

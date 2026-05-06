@@ -60,16 +60,13 @@ export function LoginPage() {
         backgroundRepeat: 'no-repeat',
       }}
     >
-      {/* Subtle dark wash so the white card holds focus on busy
-       *  backgrounds — the gradient adds depth without flattening
-       *  whatever photo is in /public/background.png. */}
+      {/* Frosted-glass overlay: a slate wash + light blur of whatever
+       *  photo sits behind it. Pushes the busy background into a
+       *  soft-focus mid-ground so the form card holds full focus. */}
       <div
         aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'linear-gradient(135deg, rgb(15 23 42 / 0.55) 0%, rgb(15 23 42 / 0.35) 100%)',
-        }}
+        className="absolute inset-0 pointer-events-none backdrop-blur-sm"
+        style={{ background: 'rgb(15 23 42 / 0.65)' }}
       />
 
       <div className="w-full max-w-[400px] relative z-10">
@@ -102,7 +99,7 @@ export function LoginPage() {
           <p className="text-white/85 mt-2 text-sm drop-shadow-sm">{branding.loginTagline}</p>
         </div>
 
-        <Card className="p-8 shadow-xl">
+        <Card className="p-8 shadow-xl bg-white/85 backdrop-blur-md border border-white/20">
           <form onSubmit={onSubmit} className="space-y-1">
             <Input
               label="Username"

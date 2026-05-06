@@ -48,7 +48,7 @@ const KEY_MAP: Record<TextKey, string> = {
 };
 
 const ALLOWED_LOGO_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
-const MAX_LOGO_BYTES = 512 * 1024; // 512 KB — logos should be small.
+const MAX_LOGO_BYTES = 1024 * 1024; // 1 MB — logos should be small but operators sometimes upload uncompressed PNG.
 
 export type BrandingDto = {
   organizationName: string;

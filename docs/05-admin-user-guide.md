@@ -133,7 +133,7 @@ The user-friendly editor for the strings shown on the login page, sidebar, heade
 | Login tagline | Above the login form ("Sign in to continue…") |
 | Footer text | Right of org name in the footer ("Internal use only…") |
 
-**Logo** — click "Upload logo" to replace the default shield icon. Accepts PNG, JPEG, WebP, SVG up to 512 KB. Server sniffs the bytes (declared MIME type is ignored except for SVG, which can't be sniffed). Use "Remove" to clear back to the icon.
+**Logo** — click "Upload logo" to replace the default shield icon. Accepts PNG, JPEG, WebP, SVG up to 1 MB. Server sniffs the bytes (declared MIME type is ignored except for SVG, which can't be sniffed). Use "Remove" to clear back to the icon.
 
 Changes go live for everyone on next refetch (max 5-min cache; sign-out/in or hard refresh forces immediately).
 

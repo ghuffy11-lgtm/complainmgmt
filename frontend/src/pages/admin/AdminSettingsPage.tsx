@@ -118,7 +118,7 @@ function BrandingCard({ canManage }: { canManage: boolean }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-text-main m-0">Logo</p>
           <p className="text-xs text-text-muted m-0 mt-0.5">
-            PNG, JPEG, WebP or SVG · max 512 KB · displayed at the login card and sidebar.
+            PNG, JPEG, WebP or SVG · max 1 MB · displayed at the login card and sidebar.
           </p>
           {canManage && (
             <div className="flex items-center gap-2 mt-3">

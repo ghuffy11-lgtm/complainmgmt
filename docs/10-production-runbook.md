@@ -115,7 +115,7 @@ Open `https://<PROD_IP>` in a browser. Click through the cert warning the first 
 
 1. Sign in with `admin` and the `INITIAL_ADMIN_PASSWORD` from step 2.
 2. **Change the admin password immediately** (top-right → Change password).
-3. **Admin → Settings → Branding** — set the real organisation name, system name, login subtitle, footer text. Upload your logo (PNG / JPEG / WebP / SVG, max 512 KB).
+3. **Admin → Settings → Branding** — set the real organisation name, system name, login subtitle, footer text. Upload your logo (PNG / JPEG / WebP / SVG, max 1 MB).
 4. **Admin → Departments** — create the departments you actually have (Reception, Pharmacy, Nursing, …). The defaults from the seed are placeholders.
 5. **Admin → Users** — create real user accounts with the appropriate role + department memberships. Mark `admin` inactive (or delete) once you have at least one human admin who isn't the bootstrap account.
 6. **Admin → Fields** — review the dynamic fields shipped by default (`mobile_number`, `file_id`, etc.); add or rename any clinic-specific fields.

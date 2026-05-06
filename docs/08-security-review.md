@@ -74,7 +74,7 @@ Plan: move to a managed secrets store (Vault / AWS SM) post-1.0.
 - Filename sanitization strips path components and control chars; MIME is
   sniffed server-side (client `Content-Type` is ignored). The branding
   logo upload uses the same sniffer with a stricter allow-list
-  (PNG/JPEG/WebP/SVG, 512 KB cap); SVG can't be sniffed from magic bytes
+  (PNG/JPEG/WebP/SVG, 1 MB cap); SVG can't be sniffed from magic bytes
   so it's gated by a leading-`<svg>`/`<?xml>` check before accepting the
   declared MIME.
 - No template engines; no shell-outs from request handlers; no `eval`.

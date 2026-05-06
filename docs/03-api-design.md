@@ -196,7 +196,7 @@ Server validates MIME via magic-byte sniffing; client-supplied `Content-Type` is
 | GET | `/admin/settings` | `admin.settings:manage` | raw key/value JSON store, including `branding.*` keys |
 | PATCH | `/admin/settings` | `admin.settings:manage` | low-level editor — Branding card uses dedicated endpoints below |
 | POST | `/admin/branding` | `admin.settings:manage` | `{organizationName?, systemName?, …}` — partial patch, validates lengths |
-| POST | `/admin/branding/logo` | `admin.settings:manage` | multipart `file=` — accepts PNG / JPEG / WebP / SVG up to 512 KB; sniffs bytes |
+| POST | `/admin/branding/logo` | `admin.settings:manage` | multipart `file=` — accepts PNG / JPEG / WebP / SVG up to 1 MB; sniffs bytes |
 | DELETE | `/admin/branding/logo` | `admin.settings:manage` | clears the uploaded logo (frontend falls back to the shield icon) |
 
 ## Default permission matrix (seeded)
