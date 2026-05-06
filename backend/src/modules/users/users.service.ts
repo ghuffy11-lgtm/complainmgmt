@@ -125,7 +125,9 @@ export class UsersService {
         created.departmentId = primary;
       }
       if (dto.roleIds?.length) {
-        await this.permissions.setUserRoles(created.id, dto.roleIds, actorId);
+        // Run inside the same transaction — the user row above isn't
+        // committed yet, so a separate connection's FK check would fail.
+        await this.permissions.setUserRoles(created.id, dto.roleIds, actorId, em);
       }
       return created;
     });

@@ -73,15 +73,26 @@ export class PermissionsService {
     });
   }
 
-  /** Replace a user's role set atomically. */
-  async setUserRoles(userId: string, roleIds: string[], assignedBy: string | null): Promise<void> {
-    await this.dataSource.transaction(async (em) => {
-      await em.delete(UserRoleEntity, { userId });
+  /** Replace a user's role set atomically. Pass an existing EntityManager
+   *  to enlist in the caller's transaction (e.g. UsersService.create has
+   *  to hand its `em` in so the role rows see the still-uncommitted user
+   *  row — without that, the FK fires). When called standalone (from
+   *  users-controller's POST /:id/roles), it spins its own transaction. */
+  async setUserRoles(
+    userId: string,
+    roleIds: string[],
+    assignedBy: string | null,
+    em?: import('typeorm').EntityManager,
+  ): Promise<void> {
+    const work = async (m: import('typeorm').EntityManager) => {
+      await m.delete(UserRoleEntity, { userId });
       if (roleIds.length === 0) return;
-      await em.insert(
+      await m.insert(
         UserRoleEntity,
         roleIds.map((roleId) => ({ userId, roleId, assignedBy })),
       );
-    });
+    };
+    if (em) return work(em);
+    await this.dataSource.transaction(work);
   }
 }
