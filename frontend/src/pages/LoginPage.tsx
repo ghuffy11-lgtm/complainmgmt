@@ -51,12 +51,25 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg relative overflow-hidden p-6">
-      {/* Ambient background glow */}
+    <div
+      className="min-h-screen flex items-center justify-center relative overflow-hidden p-6"
+      style={{
+        backgroundImage: 'url(/background.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    >
+      {/* Subtle dark wash so the white card holds focus on busy
+       *  backgrounds — the gradient adds depth without flattening
+       *  whatever photo is in /public/background.png. */}
       <div
         aria-hidden
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
-        style={{ background: 'rgb(37 99 235 / 0.05)', filter: 'blur(100px)' }}
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'linear-gradient(135deg, rgb(15 23 42 / 0.55) 0%, rgb(15 23 42 / 0.35) 100%)',
+        }}
       />
 
       <div className="w-full max-w-[400px] relative z-10">
@@ -80,13 +93,13 @@ export function LoginPage() {
               <ShieldCheck size={36} strokeWidth={1.5} />
             )}
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">
+          <h1 className="text-2xl font-bold tracking-tight text-white m-0 drop-shadow-md">
             {branding.systemName}
-            <span className="block text-sm font-medium text-text-muted mt-1">
+            <span className="block text-sm font-medium text-white/85 mt-1 drop-shadow-sm">
               {branding.organizationName} · {branding.loginSubtitle}
             </span>
           </h1>
-          <p className="text-text-muted mt-2 text-sm">{branding.loginTagline}</p>
+          <p className="text-white/85 mt-2 text-sm drop-shadow-sm">{branding.loginTagline}</p>
         </div>
 
         <Card className="p-8 shadow-xl">
@@ -130,7 +143,7 @@ export function LoginPage() {
           </form>
         </Card>
 
-        <footer className="mt-8 text-center text-text-subtle text-xs">
+        <footer className="mt-8 text-center text-white/80 text-xs drop-shadow-sm">
           {branding.organizationName} · {branding.footerText}
         </footer>
       </div>

@@ -9,6 +9,9 @@ RUN npm install --no-audit --no-fund
 
 COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
+# Static assets (login background, etc.) — Vite copies anything in public/
+# to the build root so they're reachable as /<filename> at runtime.
+COPY public ./public
 RUN npm run build
 
 # ─── runtime: nginx-served static ──────────────────────────────────────────
