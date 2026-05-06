@@ -94,36 +94,85 @@ function ManagerDashboard() {
   const primary = useBranding().primaryColor;
   const STATUS_COLORS = buildStatusColors(primary);
   const PRIORITY_COLORS = buildPriorityColors(primary);
-  const summaryQ = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => DashboardService.summary() });
-  const statusQ = useQuery({ queryKey: ['dashboard', 'by-status'], queryFn: () => DashboardService.byStatus() });
-  const priorityQ = useQuery({ queryKey: ['dashboard', 'by-priority'], queryFn: () => DashboardService.byPriority() });
-  const deptQ = useQuery({ queryKey: ['dashboard', 'by-department'], queryFn: () => DashboardService.byDepartment() });
-  const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
-  const agingQ = useQuery({ queryKey: ['dashboard', 'aging'], queryFn: () => DashboardService.aging() });
 
-  const [days, setDays] = React.useState(90);
-  const trendQ = useQuery({ queryKey: ['dashboard', 'by-date', days], queryFn: () => DashboardService.byDate(days) });
-  const latencyQ = useQuery({ queryKey: ['dashboard', 'resolution-latency', days], queryFn: () => DashboardService.resolutionLatency(days) });
+  // Department drilldown — null = all departments. Manager's full-picture
+  // view is the default; picking one narrows every panel + KPI.
+  const [departmentId, setDepartmentId] = React.useState<string | null>(null);
+  const deptScope = departmentId ? { departmentId } : {};
+
+  // Time window for trend + latency. `days` mode shows last N days from
+  // today; `month` mode shows a single calendar month picked from the
+  // last 12. Other panels (summary, status, priority, by-dept, aging)
+  // are all-time — they answer "what's the picture right now".
+  const [window, setWindow] = React.useState<TimeWindow>({ kind: 'days', days: 90 });
+  const windowOpts: { days?: number; from?: string; to?: string } =
+    window.kind === 'days' ? { days: window.days } : { from: window.from, to: window.to };
+  const windowKey = window.kind === 'days' ? `d:${window.days}` : `m:${window.month}`;
+  const windowLabel = window.kind === 'days' ? `last ${window.days} days` : monthLabel(window.month);
+
+  const summaryQ = useQuery({
+    queryKey: ['dashboard', 'summary', departmentId],
+    queryFn: () => DashboardService.summary(deptScope),
+  });
+  const statusQ = useQuery({
+    queryKey: ['dashboard', 'by-status', departmentId],
+    queryFn: () => DashboardService.byStatus(deptScope),
+  });
+  const priorityQ = useQuery({
+    queryKey: ['dashboard', 'by-priority', departmentId],
+    queryFn: () => DashboardService.byPriority(deptScope),
+  });
+  const deptQ = useQuery({
+    // when manager has narrowed to a single dept, the by-department panel
+    // collapses to one row — still useful to confirm the scope.
+    queryKey: ['dashboard', 'by-department', departmentId],
+    queryFn: () => DashboardService.byDepartment(deptScope),
+  });
+  const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const agingQ = useQuery({
+    queryKey: ['dashboard', 'aging', departmentId],
+    queryFn: () => DashboardService.aging(deptScope),
+  });
+
+  const trendQ = useQuery({
+    queryKey: ['dashboard', 'by-date', windowKey, departmentId],
+    queryFn: () => DashboardService.byDate({ ...windowOpts, ...deptScope }),
+  });
+  const latencyQ = useQuery({
+    queryKey: ['dashboard', 'resolution-latency', windowKey, departmentId],
+    queryFn: () => DashboardService.resolutionLatency({ ...windowOpts, ...deptScope }),
+  });
 
   const deptName = (id: string | null): string =>
     !id ? 'Unassigned' : (departmentsQ.data?.find((d) => d.id === id)?.name ?? `#${id}`);
 
-  const trendSeries = useZeroFilledTrend(trendQ.data?.data, days);
+  const trendSeries = useTrendSeries(trendQ.data?.data, window);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
-        <p className="text-sm text-text-muted mt-1">System-wide overview across all departments</p>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
+          <p className="text-sm text-text-muted mt-1">
+            {departmentId
+              ? `Showing ${deptName(departmentId)} only`
+              : 'System-wide overview across all departments'}
+          </p>
+        </div>
+        <DepartmentScopePicker
+          departments={departmentsQ.data ?? []}
+          value={departmentId}
+          onChange={setDepartmentId}
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiLink to="/complaints" label="Total complaints" value={summaryQ.data?.total ?? '—'} />
-        <KpiLink to="/complaints?status=open" label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
-        <KpiLink to="/complaints?priority=critical" label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
+        <KpiLink to={complaintsLink({ departmentId })} label="Total complaints" value={summaryQ.data?.total ?? '—'} />
+        <KpiLink to={complaintsLink({ departmentId, status: 'open' })} label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
+        <KpiLink to={complaintsLink({ departmentId, priority: 'critical' })} label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
         <Kpi
-          label={`Avg time to close (${days}d)`}
+          label={`Avg time to close (${windowLabel})`}
           value={latencyQ.data?.avgHours == null ? '—' : formatHours(latencyQ.data.avgHours)}
           sub={latencyQ.data?.count ? `over ${latencyQ.data.count} resolutions` : undefined}
         />
@@ -133,13 +182,13 @@ function ManagerDashboard() {
       <Card
         title="Complaint volume"
         subtitle="by complaint date · zero-filled"
-        headerAction={<WindowToggle days={days} onChange={setDays} />}
+        headerAction={<WindowPicker window={window} onChange={setWindow} />}
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
-        {!trendQ.isLoading && trendTotal === 0 && <NoTrendData days={days} />}
+        {!trendQ.isLoading && trendTotal === 0 && <NoTrendData label={windowLabel} />}
         {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} primary={primary} />}
         <div className="text-right text-xs text-text-muted mt-2">
-          {trendTotal} complaints in {days} days
+          {trendTotal} complaints · {windowLabel}
         </div>
       </Card>
 
@@ -151,7 +200,7 @@ function ManagerDashboard() {
             name: r.status.replace('_', ' '),
             value: r.count,
             color: STATUS_COLORS[r.status] ?? SLATE_500,
-            link: `/complaints?status=${encodeURIComponent(r.status)}`,
+            link: complaintsLink({ departmentId, status: r.status }),
           }))}
           loading={statusQ.isLoading}
         />
@@ -161,7 +210,7 @@ function ManagerDashboard() {
             key: r.priority,
             count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
-            link: `/complaints?priority=${encodeURIComponent(r.priority)}`,
+            link: complaintsLink({ departmentId, priority: r.priority }),
           }))}
           loading={priorityQ.isLoading}
           primary={primary}
@@ -191,15 +240,58 @@ function ManagerDashboard() {
       </div>
 
       {/* Resolution latency */}
-      <Card title="Resolution latency" subtitle={`created → resolved/closed · last ${days} days`}>
+      <Card title="Resolution latency" subtitle={`created → resolved/closed · ${windowLabel}`}>
         {latencyQ.isLoading && <p className="muted">Loading…</p>}
         {!latencyQ.isLoading && (latencyQ.data?.count ?? 0) === 0 && (
-          <p className="muted">No complaints have been resolved or closed in the last {days} days.</p>
+          <p className="muted">No complaints have been resolved or closed in {windowLabel}.</p>
         )}
         {!latencyQ.isLoading && latencyQ.data && latencyQ.data.count > 0 && <LatencyDetail data={latencyQ.data} primary={primary} />}
       </Card>
     </section>
   );
+}
+
+// ─── Time-window state ───────────────────────────────────────────────────
+
+type TimeWindow =
+  | { kind: 'days'; days: number }
+  | { kind: 'month'; month: string; from: string; to: string };
+
+function buildMonthWindow(month: string): { kind: 'month'; month: string; from: string; to: string } {
+  // month is YYYY-MM. Compute first / last day.
+  const [y, m] = month.split('-').map((s) => parseInt(s, 10));
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // last day of (y, m)
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    kind: 'month',
+    month,
+    from: `${y}-${pad(m)}-01`,
+    to: `${y}-${pad(m)}-${pad(lastDay)}`,
+  };
+}
+
+function monthLabel(month: string): string {
+  const [y, m] = month.split('-').map((s) => parseInt(s, 10));
+  const monthName = new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return monthName;
+}
+
+/** Build a "?departmentId=...&status=...&priority=..." complaints-list link. */
+function complaintsLink(opts: {
+  departmentId?: string | null;
+  status?: string;
+  priority?: string;
+}): string {
+  const sp = new URLSearchParams();
+  if (opts.departmentId) sp.set('departmentId', String(opts.departmentId));
+  if (opts.status) sp.set('status', opts.status);
+  if (opts.priority) sp.set('priority', opts.priority);
+  const qs = sp.toString();
+  return qs ? `/complaints?${qs}` : '/complaints';
 }
 
 // ─── Scoped / user dashboard ────────────────────────────────────────────
@@ -225,7 +317,7 @@ function UserDashboard() {
   const agingQ = useQuery({ queryKey: ['dashboard', 'aging', 'mine'], queryFn: () => DashboardService.aging() });
 
   const [days, setDays] = React.useState(30);
-  const trendQ = useQuery({ queryKey: ['dashboard', 'by-date', 'mine', days], queryFn: () => DashboardService.byDate(days) });
+  const trendQ = useQuery({ queryKey: ['dashboard', 'by-date', 'mine', days], queryFn: () => DashboardService.byDate({ days }) });
   const trendSeries = useZeroFilledTrend(trendQ.data?.data, days);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
@@ -252,10 +344,17 @@ function UserDashboard() {
 
       <Card
         title="Volume in your department"
-        headerAction={<WindowToggle days={days} onChange={setDays} />}
+        headerAction={
+          <WindowPicker
+            window={{ kind: 'days', days }}
+            onChange={(w) => {
+              if (w.kind === 'days') setDays(w.days);
+            }}
+          />
+        }
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
-        {!trendQ.isLoading && trendTotal === 0 && <NoTrendData days={days} />}
+        {!trendQ.isLoading && trendTotal === 0 && <NoTrendData label={`the last ${days} days`} />}
         {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} primary={primary} />}
       </Card>
 
@@ -300,20 +399,39 @@ function UserDashboard() {
 
 // ─── shared bits ─────────────────────────────────────────────────────────
 
-function useZeroFilledTrend(raw: { date: string; count: number }[] | undefined, days: number) {
+/** Zero-fill the trend series so missing days show as 0 on the chart. */
+function useTrendSeries(
+  raw: { date: string; count: number }[] | undefined,
+  window: TimeWindow,
+) {
   return React.useMemo(() => {
     const counts = new Map((raw ?? []).map((p) => [p.date, p.count]));
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
     const out: { date: string; count: number }[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setUTCDate(d.getUTCDate() - i);
-      const iso = d.toISOString().slice(0, 10);
-      out.push({ date: iso, count: counts.get(iso) ?? 0 });
+    if (window.kind === 'days') {
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      for (let i = window.days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setUTCDate(d.getUTCDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        out.push({ date: iso, count: counts.get(iso) ?? 0 });
+      }
+    } else {
+      // Iterate through the picked month's calendar days.
+      const start = new Date(window.from + 'T00:00:00Z');
+      const end = new Date(window.to + 'T00:00:00Z');
+      for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+        const iso = d.toISOString().slice(0, 10);
+        out.push({ date: iso, count: counts.get(iso) ?? 0 });
+      }
     }
     return out;
-  }, [raw, days]);
+  }, [raw, window]);
+}
+
+// Backwards compat — UserDashboard still uses the simpler days-only path.
+function useZeroFilledTrend(raw: { date: string; count: number }[] | undefined, days: number) {
+  return useTrendSeries(raw, { kind: 'days', days });
 }
 
 function Kpi({
@@ -379,33 +497,98 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WindowToggle({ days, onChange }: { days: number; onChange: (n: number) => void }) {
+/** Time-window picker on the trend / latency cards. Presets for last
+ *  N days + a "Specific month…" dropdown listing the last 12 months. */
+function WindowPicker({
+  window,
+  onChange,
+}: {
+  window: TimeWindow;
+  onChange: (w: TimeWindow) => void;
+}) {
   return (
-    <div className="flex items-center gap-1 bg-surface-2/50 p-0.5 rounded-md border border-border">
-      {WINDOWS.map((w) => (
-        <button
-          key={w.days}
-          onClick={() => onChange(w.days)}
-          className={cn(
-            'px-3 py-1 text-xs font-medium rounded-[5px] transition-all',
-            days === w.days
-              ? 'bg-surface text-text-main shadow-sm ring-1 ring-border'
-              : 'text-text-muted hover:text-text-main',
-          )}
-        >
-          {w.label}
-        </button>
-      ))}
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 bg-surface-2/50 p-0.5 rounded-md border border-border">
+        {WINDOWS.map((w) => {
+          const isActive = window.kind === 'days' && window.days === w.days;
+          return (
+            <button
+              key={w.days}
+              onClick={() => onChange({ kind: 'days', days: w.days })}
+              className={cn(
+                'px-3 py-1 text-xs font-medium rounded-[5px] transition-all',
+                isActive
+                  ? 'bg-surface text-text-main shadow-sm ring-1 ring-border'
+                  : 'text-text-muted hover:text-text-main',
+              )}
+            >
+              {w.label}
+            </button>
+          );
+        })}
+      </div>
+      <select
+        value={window.kind === 'month' ? window.month : ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) return;
+          onChange(buildMonthWindow(v));
+        }}
+        className="h-7 text-xs bg-surface border border-border rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
+      >
+        <option value="">Specific month…</option>
+        {lastNMonths(12).map((m) => (
+          <option key={m} value={m}>{monthLabel(m)}</option>
+        ))}
+      </select>
     </div>
   );
 }
 
-function NoTrendData({ days }: { days: number }) {
+/** Generate YYYY-MM strings for the last N months ending with the current month. */
+function lastNMonths(n: number): string[] {
+  const out: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < n; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+function NoTrendData({ label }: { label: string }) {
   return (
     <p className="text-text-muted text-sm">
-      No complaints with a complaint date in the last {days} days. Set a complaint date when
+      No complaints with a complaint date in {label}. Set a complaint date when
       creating new ones to populate this chart.
     </p>
+  );
+}
+
+/** Department drilldown picker for the manager dashboard. Hidden when
+ *  there are no departments to choose from. */
+function DepartmentScopePicker({
+  departments,
+  value,
+  onChange,
+}: {
+  departments: { id: string; name: string; isActive: boolean }[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  const active = departments.filter((d) => d.isActive);
+  if (active.length === 0) return null;
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      className="h-9 text-sm bg-surface border border-border-strong rounded-md px-3 focus:outline-none focus:ring-2 focus:ring-primary"
+    >
+      <option value="">All departments</option>
+      {active.map((d) => (
+        <option key={d.id} value={d.id}>{d.name}</option>
+      ))}
+    </select>
   );
 }
 

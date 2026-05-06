@@ -12,7 +12,11 @@ export type Summary = {
 export type AgingBucket = { bucket: '0-1d' | '1-7d' | '7-30d' | '30d+'; count: number };
 
 export type ResolutionLatency = {
-  days: number;
+  /** Set when the server resolved the request as "last N days". */
+  days?: number;
+  /** Set when the server resolved the request as a YYYY-MM-DD range. */
+  from?: string;
+  to?: string;
   count: number;
   avgHours: number | null;
   medianHours: number | null;
@@ -26,6 +30,10 @@ export type ResolutionLatency = {
  *   - `dashboard.own:read` → forced to caller's own department, query ignored
  */
 type ScopeOpts = { departmentId?: string };
+
+/** Time-window for trend / latency. `from`+`to` (YYYY-MM-DD) win when both
+ *  set — used by the monthly-picker UI. Otherwise `days` drives. */
+type WindowOpts = { days?: number; from?: string; to?: string };
 
 export const DashboardService = {
   summary(opts: ScopeOpts = {}) {
@@ -43,19 +51,20 @@ export const DashboardService = {
     return api.get<{ departmentId: string | null; count: number }[]>('/dashboard/by-department', { params: opts })
       .then((r) => r.data);
   },
-  byDate(days = 90, opts: ScopeOpts = {}) {
+  byDate(opts: WindowOpts & ScopeOpts = {}) {
     return api
-      .get<{ days: number; data: { date: string; count: number }[] }>('/dashboard/by-date', {
-        params: { days, ...opts },
-      })
+      .get<{ days?: number; from?: string; to?: string; data: { date: string; count: number }[] }>(
+        '/dashboard/by-date',
+        { params: opts },
+      )
       .then((r) => r.data);
   },
   aging(opts: ScopeOpts = {}) {
     return api.get<AgingBucket[]>('/dashboard/aging', { params: opts }).then((r) => r.data);
   },
-  resolutionLatency(days = 90, opts: ScopeOpts = {}) {
+  resolutionLatency(opts: WindowOpts & ScopeOpts = {}) {
     return api
-      .get<ResolutionLatency>('/dashboard/resolution-latency', { params: { days, ...opts } })
+      .get<ResolutionLatency>('/dashboard/resolution-latency', { params: opts })
       .then((r) => r.data);
   },
 };

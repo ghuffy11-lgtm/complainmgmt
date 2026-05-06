@@ -113,21 +113,26 @@ export class DashboardController {
   async byDate(
     @CurrentUser() actor: AuthUser,
     @Query('days') daysParam = '90',
+    @Query('from') fromParam?: string,
+    @Query('to') toParam?: string,
     @Query('departmentId') departmentId?: string,
   ) {
     const dept = this.resolveScope(actor, departmentId);
-    const days = Math.min(365, Math.max(1, parseInt(daysParam, 10) || 90));
-    const rows = await this.scoped(
-      this.complaints.createQueryBuilder('c')
-        .select(`to_char(c.complaint_date, 'YYYY-MM-DD')`, 'date')
-        .addSelect('COUNT(*)::int', 'count')
-        .where('c.complaint_date IS NOT NULL')
-        .andWhere(`c.complaint_date >= CURRENT_DATE - :days * INTERVAL '1 day'`, { days })
-        .groupBy('c.complaint_date')
-        .orderBy('c.complaint_date', 'ASC'),
-      dept,
-    ).getRawMany<{ date: string; count: number }>();
-    return { days, data: rows };
+    const range = parseRange(fromParam, toParam, daysParam);
+    const qb = this.complaints
+      .createQueryBuilder('c')
+      .select(`to_char(c.complaint_date, 'YYYY-MM-DD')`, 'date')
+      .addSelect('COUNT(*)::int', 'count')
+      .where('c.complaint_date IS NOT NULL')
+      .groupBy('c.complaint_date')
+      .orderBy('c.complaint_date', 'ASC');
+    if (range.kind === 'days') {
+      qb.andWhere(`c.complaint_date >= CURRENT_DATE - :days * INTERVAL '1 day'`, { days: range.days });
+    } else {
+      qb.andWhere('c.complaint_date BETWEEN :from AND :to', { from: range.from, to: range.to });
+    }
+    const rows = await this.scoped(qb, dept).getRawMany<{ date: string; count: number }>();
+    return { ...range, data: rows };
   }
 
   @Get('aging')
@@ -161,17 +166,28 @@ export class DashboardController {
   async resolutionLatency(
     @CurrentUser() actor: AuthUser,
     @Query('days') daysParam = '90',
+    @Query('from') fromParam?: string,
+    @Query('to') toParam?: string,
     @Query('departmentId') departmentId?: string,
   ) {
     const dept = this.resolveScope(actor, departmentId);
-    const days = Math.min(365, Math.max(1, parseInt(daysParam, 10) || 90));
+    const range = parseRange(fromParam, toParam, daysParam);
 
-    const params: unknown[] = [days];
+    // $1 carries either the days int (legacy mode) or NULL (range mode);
+    // $2 / $3 carry the YYYY-MM-DD bounds in range mode. The WHERE clause
+    // adapts so both shapes share one query.
+    const params: unknown[] =
+      range.kind === 'days' ? [range.days, null, null] : [null, range.from, range.to];
     let scopeClause = '';
     if (dept !== null) {
-      scopeClause = ' AND c.assigned_department_id = ANY($2::bigint[])';
+      scopeClause = ' AND c.assigned_department_id = ANY($4::bigint[])';
       params.push(dept.map((d) => Number(d)));
     }
+
+    const whereResolved =
+      range.kind === 'days'
+        ? `resolved_at >= CURRENT_DATE - $1 * INTERVAL '1 day'`
+        : `resolved_at::date BETWEEN $2::date AND $3::date`;
 
     const perComplaint = await this.complaints.manager.query<
       Array<{ hours: number; resolved_week: string }>
@@ -192,12 +208,12 @@ export class DashboardController {
          EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600.0 AS hours,
          to_char(date_trunc('week', resolved_at), 'YYYY-MM-DD') AS resolved_week
        FROM resolutions
-       WHERE resolved_at >= CURRENT_DATE - $1 * INTERVAL '1 day'`,
+       WHERE ${whereResolved}`,
       params,
     );
 
     if (perComplaint.length === 0) {
-      return { days, count: 0, avgHours: null, medianHours: null, p95Hours: null, perWeek: [] };
+      return { ...range, count: 0, avgHours: null, medianHours: null, p95Hours: null, perWeek: [] };
     }
 
     const hours = perComplaint.map((r) => Number(r.hours)).sort((a, b) => a - b);
@@ -221,7 +237,7 @@ export class DashboardController {
       }));
 
     return {
-      days,
+      ...range,
       count: hours.length,
       avgHours: round1(avg),
       medianHours: round1(median),
@@ -229,6 +245,24 @@ export class DashboardController {
       perWeek,
     };
   }
+}
+
+/** Parse the dashboard time-range query params. Returns either:
+ *  - `{ kind: 'days', days }` — legacy "last N days" mode (clamped 1..365)
+ *  - `{ kind: 'range', from, to }` — explicit YYYY-MM-DD bounds for the
+ *    monthly-picker UI. `from`/`to` win when both are present and valid;
+ *    otherwise the days param drives. */
+type RangeSpec =
+  | { kind: 'days'; days: number }
+  | { kind: 'range'; from: string; to: string };
+
+function parseRange(from?: string, to?: string, days?: string): RangeSpec {
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  if (from && to && ISO.test(from) && ISO.test(to) && from <= to) {
+    return { kind: 'range', from, to };
+  }
+  const n = Math.min(365, Math.max(1, parseInt(days ?? '90', 10) || 90));
+  return { kind: 'days', days: n };
 }
 
 function pct(sorted: number[], p: number): number {
