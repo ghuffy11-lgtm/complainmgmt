@@ -317,9 +317,20 @@ function UserDashboard() {
   const priorityQ = useQuery({ queryKey: ['dashboard', 'by-priority', 'mine'], queryFn: () => DashboardService.byPriority() });
   const agingQ = useQuery({ queryKey: ['dashboard', 'aging', 'mine'], queryFn: () => DashboardService.aging() });
 
-  const [days, setDays] = React.useState(30);
-  const trendQ = useQuery({ queryKey: ['dashboard', 'by-date', 'mine', days], queryFn: () => DashboardService.byDate({ days }) });
-  const trendSeries = useZeroFilledTrend(trendQ.data?.data, days);
+  // Same TimeWindow shape as the manager dashboard so the picker's
+  // "Specific month…" entry actually does something. UserDashboard
+  // previously held a days-only state and silently dropped month picks.
+  const [window, setWindow] = React.useState<TimeWindow>({ kind: 'days', days: 30 });
+  const windowOpts: { days?: number; from?: string; to?: string } =
+    window.kind === 'days' ? { days: window.days } : { from: window.from, to: window.to };
+  const windowKey = window.kind === 'days' ? `d:${window.days}` : `m:${window.month}`;
+  const windowLabel = window.kind === 'days' ? `the last ${window.days} days` : monthLabel(window.month);
+
+  const trendQ = useQuery({
+    queryKey: ['dashboard', 'by-date', 'mine', windowKey],
+    queryFn: () => DashboardService.byDate(windowOpts),
+  });
+  const trendSeries = useTrendSeries(trendQ.data?.data, window);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
   // Click-throughs land on the complaints list which already scopes to the
@@ -345,17 +356,10 @@ function UserDashboard() {
 
       <Card
         title="Volume in your department"
-        headerAction={
-          <WindowPicker
-            window={{ kind: 'days', days }}
-            onChange={(w) => {
-              if (w.kind === 'days') setDays(w.days);
-            }}
-          />
-        }
+        headerAction={<WindowPicker window={window} onChange={setWindow} />}
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
-        {!trendQ.isLoading && trendTotal === 0 && <NoTrendData label={`the last ${days} days`} />}
+        {!trendQ.isLoading && trendTotal === 0 && <NoTrendData label={windowLabel} />}
         {!trendQ.isLoading && trendTotal > 0 && <TrendChart data={trendSeries} primary={primary} />}
       </Card>
 
