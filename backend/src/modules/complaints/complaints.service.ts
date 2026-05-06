@@ -414,6 +414,7 @@ export class ComplaintsService {
     input: { departmentId: string | null; userId?: string | null; note?: string },
     actor: AuthUser,
   ) {
+    let movedAwayFromActor = false;
     await this.dataSource.transaction(async (em) => {
       const c = await em
         .getRepository(ComplaintEntity)
@@ -425,7 +426,30 @@ export class ComplaintsService {
       this.assertVisible(c, actor);
       assertEditable(c, actor);
       await this.assignments.apply(em, c, input, actor);
+
+      // Detect cross-dept reassignment by a scoped user. Without `complaint:read`
+      // the supervisor loses visibility the moment they route the complaint
+      // out of their department — calling detail() would throw 404 even
+      // though their own action just succeeded. Return a minimal ack instead.
+      const newDept = input.departmentId ?? null;
+      if (
+        !actor.permissions.has('complaint:read') &&
+        newDept != null &&
+        !(actor.departmentIds ?? []).includes(String(newDept)) &&
+        String(c.createdBy) !== String(actor.id)
+      ) {
+        movedAwayFromActor = true;
+      }
     });
+
+    if (movedAwayFromActor) {
+      return {
+        id,
+        movedOutOfScope: true,
+        assignedDepartmentId: input.departmentId,
+        assignedTo: input.userId ?? null,
+      };
+    }
     // detail() reads via the global repo and must run AFTER the transaction
     // commits so it sees the new state.
     return this.detail(id, actor);

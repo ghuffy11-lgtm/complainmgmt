@@ -37,13 +37,18 @@ const NAV_ITEMS: NavItemDef[] = [
     to: '/admin',
     label: 'Admin',
     icon: ShieldCheck,
+    // `audit:read` was previously in this list — that made Managers (who
+    // hold audit:read but no admin.* perm) see the Admin sidebar link with
+    // only the Audit subpage actually accessible. Confusing. Admin in the
+    // sidebar now means "you have at least one admin.* power"; if a
+    // standalone "Audit search" link for managers is wanted later, add
+    // it as its own sidebar entry gated on audit:read alone.
     perms: [
       'admin.users:read',
       'admin.roles:read',
       'admin.fields:manage',
       'admin.departments:manage',
       'admin.settings:manage',
-      'audit:read',
     ],
   },
 ];

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { AuthService } from '../services/auth.service';
 import { useAuthStore } from '../store/auth-store';
@@ -19,7 +19,6 @@ export function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const setSession = useAuthStore((s) => s.setSession);
   const nav = useNavigate();
-  const location = useLocation() as { state?: { from?: { pathname: string } } };
   const branding = useBranding();
 
   // Reflect the system name in the browser tab. Useful as a freebie for
@@ -35,7 +34,10 @@ export function LoginPage() {
     try {
       const r = await AuthService.login(username, password);
       setSession(r);
-      nav(location.state?.from?.pathname ?? '/dashboard', { replace: true });
+      // Always land on the dashboard after sign-in. Falling back to the
+      // pre-login path felt clever but surprised users — they'd get
+      // dropped on the same complaint they were viewing two days ago.
+      nav('/dashboard', { replace: true });
     } catch (err) {
       const ex = err as { response?: { data?: { code?: string } } };
       if (ex?.response?.data?.code === 'ACCOUNT_LOCKED') {

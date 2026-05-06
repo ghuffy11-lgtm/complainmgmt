@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLogEntity } from './entities/audit-log.entity';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { RequireAnyPermission } from '../../common/decorators/permissions.decorator';
 import { DisplayNamesService } from '../display-names/display-names.service';
 import { enrichAuditRows } from './enrich-audit';
 
@@ -23,7 +23,7 @@ export class ComplaintAuditController {
   ) {}
 
   @Get()
-  @RequirePermissions('complaint:read')
+  @RequireAnyPermission('complaint:read', 'complaint.own:read')
   async list(
     @Param('complaintId') complaintId: string,
     @Query('page') page = '1',

@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { ComplaintsService, ListParams } from '../services/complaints.service';
 import { DepartmentsService } from '../services/departments.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
+import { useAuthStore } from '../store/auth-store';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -38,6 +39,18 @@ export function ComplaintsListPage() {
   const nav = useNavigate();
   const { has } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  // Scope the department dropdown to the user's active memberships when they
+  // only have own-dept read access. Users with full `complaint:read` (admin /
+  // manager) keep the full dropdown so they can drill into any dept.
+  const userDeptIds = React.useMemo(
+    () => new Set((useAuthStore.getState().user?.departmentIds ?? []).map(String)),
+    [],
+  );
+  const fullRead = has('complaint:read');
+  const visibleDepartments = React.useMemo(() => {
+    const all = departmentsQ.data ?? [];
+    return fullRead ? all : all.filter((d) => userDeptIds.has(String(d.id)));
+  }, [departmentsQ.data, fullRead, userDeptIds]);
   const fieldsQ = useQuery({ queryKey: ['dynamic-fields'], queryFn: () => DynamicFieldsService.list() });
   const searchableFields = (fieldsQ.data ?? []).filter(
     (f) => f.isSearchable && f.isActive && (f.type === 'text' || f.type === 'number' || f.type === 'dropdown'),
@@ -172,7 +185,7 @@ export function ComplaintsListPage() {
             className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">Any department</option>
-            {(departmentsQ.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            {visibleDepartments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
 
           <DateRangeInput
