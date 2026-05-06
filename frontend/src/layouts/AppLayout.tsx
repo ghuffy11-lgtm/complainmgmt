@@ -3,6 +3,8 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
   ClipboardList,
+  Eye,
+  EyeOff,
   Key,
   LayoutDashboard,
   LogOut,
@@ -249,6 +251,12 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [current, setCurrent] = React.useState('');
   const [next, setNext] = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const [showNew, setShowNew] = React.useState(false);
+
+  const mismatch = confirm.length > 0 && confirm !== next;
+  const tooShort = next.length > 0 && next.length < 10;
+  const canSubmit = next.length >= 10 && confirm === next;
 
   const m = useMutation({
     mutationFn: () => AuthService.changePassword(current, next),
@@ -264,6 +272,7 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        if (!canSubmit) return;
         m.mutate();
       }}
       className="space-y-2"
@@ -278,18 +287,37 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
       />
       <Input
         label="New password"
-        type="password"
+        type={showNew ? 'text' : 'password'}
         autoComplete="new-password"
         value={next}
         onChange={(e) => setNext(e.target.value)}
         hint="Min 10 characters. All sessions will be force-logged-out."
+        error={tooShort ? 'At least 10 characters required.' : undefined}
         required
       />
+      <Input
+        label="Confirm new password"
+        type={showNew ? 'text' : 'password'}
+        autoComplete="new-password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        error={mismatch ? 'Passwords do not match.' : undefined}
+        required
+      />
+      <button
+        type="button"
+        onClick={() => setShowNew((v) => !v)}
+        className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-main transition-colors"
+        aria-pressed={showNew}
+      >
+        {showNew ? <EyeOff size={14} /> : <Eye size={14} />}
+        {showNew ? 'Hide passwords' : 'Show new passwords'}
+      </button>
       <div className="flex justify-end gap-3 pt-2 border-t border-border">
         <Button variant="secondary" type="button" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={m.isPending || next.length < 10} isLoading={m.isPending}>
+        <Button type="submit" disabled={m.isPending || !canSubmit} isLoading={m.isPending}>
           Update
         </Button>
       </div>
