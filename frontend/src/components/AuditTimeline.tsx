@@ -92,11 +92,16 @@ function describe(e: AuditEntry, fieldsByKey?: Map<string, DynamicField>): strin
     case 'reopen':
       return `Reopened: ${titleize(String(e.oldValue ?? ''))} → ${titleize(String(e.newValue ?? ''))}`;
     case 'assign': {
-      const nv = e.newValue as { departmentId?: string | null; userId?: string | null } | null;
+      const nv = e.newValue as {
+        departmentId?: string | null;
+        departmentName?: string | null;
+        userId?: string | null;
+        userName?: string | null;
+      } | null;
       if (!nv) return 'Reassigned';
       const parts: string[] = [];
-      if (nv.departmentId) parts.push(`dept #${nv.departmentId}`);
-      if (nv.userId) parts.push(`user #${nv.userId}`);
+      if (nv.departmentId) parts.push(nv.departmentName ?? `dept #${nv.departmentId}`);
+      if (nv.userId) parts.push(nv.userName ?? `user #${nv.userId}`);
       return parts.length ? `Assigned to ${parts.join(', ')}` : 'Unassigned';
     }
     case 'attachment.added': {

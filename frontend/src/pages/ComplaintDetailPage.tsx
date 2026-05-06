@@ -52,9 +52,15 @@ export function ComplaintDetailPage() {
   const [errors, setErrors] = React.useState<Record<string, string[]>>({});
   const [assignOpen, setAssignOpen] = React.useState(false);
   const [reopenOpen, setReopenOpen] = React.useState(false);
+  // Session-only "I clicked unlock on this field" — reset on reload so an
+  // override is always a deliberate, fresh click.
+  const [unlocked, setUnlocked] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
-    if (complaintQ.data) setDraft({ ...complaintQ.data.values });
+    if (complaintQ.data) {
+      setDraft({ ...complaintQ.data.values });
+      setUnlocked({});
+    }
   }, [complaintQ.data]);
 
   const dirty = React.useMemo(() => {
@@ -128,17 +134,18 @@ export function ComplaintDetailPage() {
   const canSeeUsers = has('admin.users:read');
   const deptName = (id: string | null) => departmentsQ.data?.find((d) => d.id === id)?.name ?? (id ? `#${id}` : '—');
 
+  // True whenever the field has an owner that isn't the current user. We
+  // intentionally don't short-circuit on override permission any more — an
+  // override-holder still sees the lock and must click "Unlock" to opt in.
   const isFieldLocked = (fieldKey: string): boolean => {
     const f = (fieldsQ.data ?? []).find((x) => x.key === fieldKey);
     if (!f || f.locking !== 'first_writer_wins') return false;
     const lock = c.locks[fieldKey];
     if (!lock || !lock.ownerUserId) return false;
-    const ownedByMe = String(lock.ownerUserId) === String(user?.id);
-    if (ownedByMe) return false;
-    const canOverride =
-      has(`complaint.field:${fieldKey}:override`) || has('complaint.field:*:override');
-    return !canOverride;
+    return String(lock.ownerUserId) !== String(user?.id);
   };
+  const canOverrideField = (fieldKey: string): boolean =>
+    has(`complaint.field:${fieldKey}:override`) || has('complaint.field:*:override');
 
   return (
     <section className="space-y-6">
@@ -207,18 +214,23 @@ export function ComplaintDetailPage() {
               ) : null
             }
           >
-            {(fieldsQ.data ?? []).map((f) => (
-              <DynamicFieldRenderer
-                key={f.id}
-                field={f}
-                value={draft[f.key]}
-                onChange={(v) => setDraft((s) => ({ ...s, [f.key]: v }))}
-                disabled={!canEdit}
-                locked={isFieldLocked(f.key)}
-                lockOwner={c.locks[f.key]?.ownerUserId ?? null}
-                error={errors[f.key]?.join(', ')}
-              />
-            ))}
+            {(fieldsQ.data ?? []).map((f) => {
+              const fieldLocked = isFieldLocked(f.key) && !unlocked[f.key];
+              return (
+                <DynamicFieldRenderer
+                  key={f.id}
+                  field={f}
+                  value={draft[f.key]}
+                  onChange={(v) => setDraft((s) => ({ ...s, [f.key]: v }))}
+                  disabled={!canEdit}
+                  locked={fieldLocked}
+                  lockOwner={c.locks[f.key]?.ownerUserId ?? null}
+                  canUnlock={canEdit && fieldLocked && canOverrideField(f.key)}
+                  onUnlock={() => setUnlocked((s) => ({ ...s, [f.key]: true }))}
+                  error={errors[f.key]?.join(', ')}
+                />
+              );
+            })}
           </Card>
 
           <AttachmentsPanel complaintId={id} />
