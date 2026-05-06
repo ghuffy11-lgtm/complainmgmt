@@ -434,11 +434,6 @@ function useTrendSeries(
   }, [raw, window]);
 }
 
-// Backwards compat — UserDashboard still uses the simpler days-only path.
-function useZeroFilledTrend(raw: { date: string; count: number }[] | undefined, days: number) {
-  return useTrendSeries(raw, { kind: 'days', days });
-}
-
 function Kpi({
   label,
   value,
