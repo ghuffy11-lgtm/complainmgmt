@@ -9,8 +9,6 @@ import {
   CartesianGrid,
   Cell,
   Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -193,9 +191,9 @@ function ManagerDashboard() {
         </div>
       </Card>
 
-      {/* Status pie + Priority bar */}
+      {/* Status stacked bar + Priority bar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <PiePanel
+        <StatusStackedBar
           title="By status"
           data={(statusQ.data ?? []).map((r) => ({
             name: titleize(r.status),
@@ -410,7 +408,7 @@ function UserDashboard() {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <PiePanel
+        <StatusStackedBar
           title="By status"
           data={(statusQ.data ?? []).map((r) => ({
             name: titleize(r.status),
@@ -685,7 +683,10 @@ function LatencyDetail({
   );
 }
 
-function PiePanel({
+/** Horizontal stacked bar — one segment per status, width proportional to
+ *  count, count rendered in white inside each segment, click-through legend
+ *  underneath. Replaces the previous donut chart for at-a-glance scanning. */
+function StatusStackedBar({
   title,
   data,
   loading,
@@ -695,33 +696,69 @@ function PiePanel({
   loading: boolean;
 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
+  const visible = data.filter((d) => d.value > 0);
   return (
     <Card title={title}>
       {loading && <p className="muted">Loading…</p>}
       {!loading && total === 0 && <p className="muted">No data yet.</p>}
       {!loading && total > 0 && (
         <>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={data} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                {data.map((d) => <Cell key={d.name} fill={d.color} />)}
-              </Pie>
-              <Tooltip contentStyle={tooltipStyle} />
-            </PieChart>
-          </ResponsiveContainer>
-          <ul className="list-none p-0 m-0 flex flex-col gap-1 mt-2">
+          <div
+            className="flex h-14 w-full overflow-hidden rounded-md border border-border"
+            role="group"
+            aria-label={`${title}: ${total} total`}
+          >
+            {visible.map((d) => {
+              const pct = (d.value / total) * 100;
+              const label = (
+                <span
+                  className="text-xs font-semibold tabular-nums text-white truncate px-1"
+                  style={{ textShadow: '0 1px 1px rgb(0 0 0 / 0.25)' }}
+                >
+                  {d.value}
+                </span>
+              );
+              const baseStyle = { flexBasis: `${pct}%`, background: d.color };
+              const baseClass = 'flex items-center justify-center min-w-0';
+              return d.link ? (
+                <Link
+                  key={d.name}
+                  to={d.link}
+                  className={cn(baseClass, 'transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:z-10')}
+                  style={baseStyle}
+                  title={`${d.name}: ${d.value}`}
+                  aria-label={`${d.name}: ${d.value}`}
+                >
+                  {label}
+                </Link>
+              ) : (
+                <div
+                  key={d.name}
+                  className={baseClass}
+                  style={baseStyle}
+                  title={`${d.name}: ${d.value}`}
+                >
+                  {label}
+                </div>
+              );
+            })}
+          </div>
+          <ul className="list-none p-0 m-0 flex flex-wrap gap-x-3 gap-y-1 mt-3">
             {data.map((d) => (
               <li key={d.name}>
                 {d.link ? (
-                  <Link to={d.link} className="flex items-center gap-2 px-2 py-1 rounded-sm text-sm text-text-main hover:bg-surface-hover transition-colors">
+                  <Link
+                    to={d.link}
+                    className="flex items-center gap-2 px-2 py-1 -ml-2 rounded-sm text-sm text-text-main hover:bg-surface-hover transition-colors"
+                  >
                     <Dot color={d.color} />
-                    <span className="flex-1">{d.name}</span>
+                    <span>{d.name}</span>
                     <span className="font-mono text-xs text-text-muted">{d.value}</span>
                   </Link>
                 ) : (
                   <div className="flex items-center gap-2 px-2 py-1 text-sm">
                     <Dot color={d.color} />
-                    <span className="flex-1">{d.name}</span>
+                    <span>{d.name}</span>
                     <span className="font-mono text-xs text-text-muted">{d.value}</span>
                   </div>
                 )}
