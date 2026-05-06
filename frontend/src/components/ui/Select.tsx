@@ -95,8 +95,9 @@ export function Select({
           'data-[placeholder]:text-text-muted',
           'disabled:cursor-not-allowed disabled:bg-surface-2 disabled:opacity-60',
           'hover:border-primary/40',
-          // Density
-          size === 'sm' ? 'h-9 px-2.5 text-xs' : 'h-10 px-3 text-sm',
+          // Density. md uses 13px to match the sidebar nav scale; sm
+          // stays at 12px for compact toolbars (status / priority etc).
+          size === 'sm' ? 'h-9 px-2.5 text-xs' : 'h-10 px-3 text-[13px]',
           className,
         )}
       >
@@ -173,7 +174,7 @@ function Item({
       disabled={disabled}
       className={cn(
         'relative flex items-center gap-2 select-none rounded-sm cursor-pointer',
-        'px-2 py-1.5 text-sm text-text-main',
+        'px-2 py-1.5 text-[13px] text-text-main',
         'data-[highlighted]:bg-primary-bg data-[highlighted]:text-primary',
         'data-[state=checked]:font-medium',
         'data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed',
