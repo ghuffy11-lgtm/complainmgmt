@@ -9,6 +9,8 @@ import { UsersService } from '../services/users.service';
 import { DynamicFieldRenderer } from '../components/DynamicFieldRenderer';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { DateInput } from '../components/ui/DateInput';
+import { Select } from '../components/ui/Select';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
 import { cn } from '../lib/utils';
@@ -145,12 +147,10 @@ export function ComplaintCreatePage() {
         <Card title="Incident details" subtitle="When the complaint occurred and what was reported">
           <div className="field">
             <label className="text-[13px] font-medium text-text-main">Complaint date</label>
-            <input
-              type="date"
+            <DateInput
               value={complaintDate}
               max={new Date().toISOString().slice(0, 10)}
               onChange={(e) => setComplaintDate(e.target.value)}
-              className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <span className="hint">
               When the complaint actually occurred. Defaults to today; can be backdated for events recorded later.
@@ -172,51 +172,43 @@ export function ComplaintCreatePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="field">
               <label className="text-[13px] font-medium text-text-main">Priority</label>
-              <select
+              <Select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as ComplaintPriority)}
-                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
+                onChange={(v) => setPriority(v as ComplaintPriority)}
+                options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+              />
             </div>
 
             <div className="field">
               <label className="text-[13px] font-medium text-text-main">
                 Department <span className="text-danger">*</span>
               </label>
-              <select
+              <Select
+                placeholder="Pick a department"
                 value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                required
-                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">— pick a department —</option>
-                {(departmentsQ.data ?? [])
+                onChange={setDepartmentId}
+                options={(departmentsQ.data ?? [])
                   .filter((d) => d.isActive)
-                  .map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-              </select>
+                  .map((d) => ({ value: d.id, label: d.name }))}
+              />
             </div>
           </div>
 
           {canSeeUsers && (
             <div className="field">
               <label className="text-[13px] font-medium text-text-main">Assigned to</label>
-              <select
+              <Select
+                placeholder={departmentId ? 'Department queue' : 'Pick a department first'}
                 value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
+                onChange={setAssignedTo}
                 disabled={!departmentId}
-                className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-60"
-              >
-                <option value="">— department queue —</option>
-                {(usersQ.data?.data ?? []).map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.displayName} ({u.username})
-                  </option>
-                ))}
-              </select>
+                allowClear
+                clearLabel="Department queue"
+                options={(usersQ.data?.data ?? []).map((u) => ({
+                  value: u.id,
+                  label: `${u.displayName} (${u.username})`,
+                }))}
+              />
               <span className="hint">
                 {!departmentId
                   ? 'Pick a department first — the assignee list narrows to its active members.'

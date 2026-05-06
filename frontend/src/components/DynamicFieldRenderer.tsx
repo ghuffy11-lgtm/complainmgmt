@@ -1,4 +1,6 @@
 import type { DynamicField } from '../types/api';
+import { DateInput } from './ui/DateInput';
+import { Select } from './ui/Select';
 
 type Props = {
   field: DynamicField;
@@ -62,8 +64,7 @@ function renderInput(field: DynamicField, value: unknown, onChange: (v: unknown)
       );
     case 'date':
       return (
-        <input
-          type="date"
+        <DateInput
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value || null)}
           disabled={disabled}
@@ -71,18 +72,15 @@ function renderInput(field: DynamicField, value: unknown, onChange: (v: unknown)
       );
     case 'dropdown':
       return (
-        <select
+        <Select
+          placeholder="Select…"
           value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value || null)}
+          onChange={(v) => onChange(v || null)}
           disabled={disabled}
-        >
-          <option value="">— select —</option>
-          {(field.options ?? [])
+          options={(field.options ?? [])
             .filter((o) => o.isActive)
-            .map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-        </select>
+            .map((o) => ({ value: o.id, label: o.label }))}
+        />
       );
     case 'file':
       return <span className="muted">(uploads via the Attachments section)</span>;

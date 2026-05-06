@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
+import { Select } from '../../components/ui/Select';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { DynamicField, FieldLocking, FieldType } from '../../types/api';
@@ -175,9 +176,12 @@ function FieldEditor(props: EditorProps) {
           <input value={key} onChange={(e) => setKey(e.target.value)} disabled={!isCreate} />
         </div>
         <div className="field"><label>Type {!isCreate && <span className="muted">(immutable)</span>}</label>
-          <select value={type} onChange={(e) => setType(e.target.value as FieldType)} disabled={!isCreate}>
-            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <Select
+            value={type}
+            onChange={(v) => setType(v as FieldType)}
+            disabled={!isCreate}
+            options={TYPES.map((t) => ({ value: t, label: t }))}
+          />
         </div>
         <div className="field" style={{ gridColumn: '1 / -1' }}>
           <label>Label</label>
@@ -187,9 +191,11 @@ function FieldEditor(props: EditorProps) {
           <input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
         </div>
         <div className="field"><label>Locking</label>
-          <select value={locking} onChange={(e) => setLocking(e.target.value as FieldLocking)}>
-            {LOCKINGS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          <Select
+            value={locking}
+            onChange={(v) => setLocking(v as FieldLocking)}
+            options={LOCKINGS.map((l) => ({ value: l, label: l }))}
+          />
         </div>
         <div className="field row" style={{ gridColumn: '1 / -1' }}>
           <label className="row" style={{ cursor: 'pointer' }}>

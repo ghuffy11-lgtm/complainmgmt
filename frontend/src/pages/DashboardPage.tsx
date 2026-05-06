@@ -22,6 +22,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useBranding } from '../hooks/useBranding';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Select } from '../components/ui/Select';
 import { cn } from '../lib/utils';
 
 const WINDOWS = [
@@ -527,20 +528,17 @@ function WindowPicker({
           );
         })}
       </div>
-      <select
+      <Select
+        size="sm"
+        className="w-[180px]"
+        placeholder="Specific month…"
         value={window.kind === 'month' ? window.month : ''}
-        onChange={(e) => {
-          const v = e.target.value;
+        onChange={(v) => {
           if (!v) return;
           onChange(buildMonthWindow(v));
         }}
-        className="h-7 text-xs bg-surface border border-border rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
-      >
-        <option value="">Specific month…</option>
-        {lastNMonths(12).map((m) => (
-          <option key={m} value={m}>{monthLabel(m)}</option>
-        ))}
-      </select>
+        options={lastNMonths(12).map((m) => ({ value: m, label: monthLabel(m) }))}
+      />
     </div>
   );
 }
@@ -579,16 +577,15 @@ function DepartmentScopePicker({
   const active = departments.filter((d) => d.isActive);
   if (active.length === 0) return null;
   return (
-    <select
+    <Select
+      className="w-[200px]"
+      placeholder="All departments"
       value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || null)}
-      className="h-9 text-sm bg-surface border border-border-strong rounded-md px-3 focus:outline-none focus:ring-2 focus:ring-primary"
-    >
-      <option value="">All departments</option>
-      {active.map((d) => (
-        <option key={d.id} value={d.id}>{d.name}</option>
-      ))}
-    </select>
+      onChange={(v) => onChange(v || null)}
+      allowClear
+      clearLabel="All departments"
+      options={active.map((d) => ({ value: d.id, label: d.name }))}
+    />
   );
 }
 

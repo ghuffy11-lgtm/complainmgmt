@@ -6,6 +6,7 @@ import { BrandingService, type Branding } from '../../services/branding.service'
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
 import { errorMessage, useToast } from '../../components/ui/Toast';
 import { usePermissions } from '../../hooks/usePermissions';
 import { BRANDING_QUERY_KEY } from '../../hooks/useBranding';
@@ -212,22 +213,19 @@ function ThemePicker({
          *  felt broken in earlier versions). */}
         <div className="field m-0">
           <label className="text-[13px] font-medium text-text-main">Preset</label>
-          <select
+          <Select
             value={isCustom ? '__custom__' : matched.key}
-            onChange={(e) => {
-              const k = e.target.value;
-              if (k === '__custom__') return; // unreachable — the option is disabled
+            onChange={(k) => {
+              if (k === '__custom__') return; // unreachable — disabled option
               const preset = THEME_PRESETS.find((p) => p.key === k);
               if (preset) onChange(preset.primary);
             }}
             disabled={disabled}
-            className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
-          >
-            {THEME_PRESETS.map((p) => (
-              <option key={p.key} value={p.key}>{p.label}</option>
-            ))}
-            <option value="__custom__" disabled>— Custom (use color picker →) —</option>
-          </select>
+            options={[
+              ...THEME_PRESETS.map((p) => ({ value: p.key, label: p.label })),
+              { value: '__custom__', label: '— Custom (use color picker →) —', disabled: true },
+            ]}
+          />
           {!isCustom && matched.description && (
             <span className="hint">{matched.description}</span>
           )}

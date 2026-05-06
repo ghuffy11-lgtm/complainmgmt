@@ -8,6 +8,8 @@ import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { useAuthStore } from '../store/auth-store';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { DateInput } from '../components/ui/DateInput';
+import { Select } from '../components/ui/Select';
 import { Skeleton } from '../components/ui/Skeleton';
 import { usePermissions } from '../hooks/usePermissions';
 import { cn } from '../lib/utils';
@@ -161,32 +163,38 @@ export function ComplaintsListPage() {
             />
           </div>
 
-          <select
+          <Select
+            size="sm"
+            className="w-[150px]"
+            placeholder="Any status"
             value={filters.status ?? ''}
-            onChange={(e) => apply({ status: (e.target.value || undefined) as ComplaintStatus | undefined })}
-            className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">Any status</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-          </select>
+            onChange={(v) => apply({ status: (v || undefined) as ComplaintStatus | undefined })}
+            allowClear
+            clearLabel="Any status"
+            options={STATUSES.map((s) => ({ value: s, label: s.replace('_', ' ') }))}
+          />
 
-          <select
+          <Select
+            size="sm"
+            className="w-[140px]"
+            placeholder="Any priority"
             value={filters.priority ?? ''}
-            onChange={(e) => apply({ priority: (e.target.value || undefined) as ComplaintPriority | undefined })}
-            className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">Any priority</option>
-            {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+            onChange={(v) => apply({ priority: (v || undefined) as ComplaintPriority | undefined })}
+            allowClear
+            clearLabel="Any priority"
+            options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+          />
 
-          <select
+          <Select
+            size="sm"
+            className="w-[170px]"
+            placeholder="Any department"
             value={filters.departmentId ?? ''}
-            onChange={(e) => apply({ departmentId: e.target.value || undefined })}
-            className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">Any department</option>
-            {visibleDepartments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+            onChange={(v) => apply({ departmentId: v || undefined })}
+            allowClear
+            clearLabel="Any department"
+            options={visibleDepartments.map((d) => ({ value: d.id, label: d.name }))}
+          />
 
           <DateRangeInput
             label="From"
@@ -329,11 +337,10 @@ function DateRangeInput({
   return (
     <label className="flex items-center gap-1.5 text-xs text-text-muted">
       <span>{label}</span>
-      <input
-        type="date"
+      <DateInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-9 bg-surface border border-border-strong rounded-md px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+        className="h-9 px-2 text-xs"
       />
     </label>
   );
@@ -360,17 +367,20 @@ function SearchableFieldInput({
   field, value, onChange,
 }: { field: DynamicField; value: string; onChange: (v: string) => void }) {
   if (field.type === 'dropdown') {
+    const placeholder = `Any ${field.label.toLowerCase()}`;
     return (
-      <select
+      <Select
+        size="sm"
+        className="w-[170px]"
+        placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-9 text-xs bg-surface border border-border-strong rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-primary"
-      >
-        <option value="">{`Any ${field.label.toLowerCase()}`}</option>
-        {(field.options ?? [])
+        onChange={onChange}
+        allowClear
+        clearLabel={placeholder}
+        options={(field.options ?? [])
           .filter((o) => o.isActive)
-          .map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
+          .map((o) => ({ value: o.id, label: o.label }))}
+      />
     );
   }
   return (

@@ -4,6 +4,7 @@ import { AuditFilter, AuditService } from '../../services/audit.service';
 import { AuditTimeline } from '../../components/AuditTimeline';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Select } from '../../components/ui/Select';
 import { DynamicFieldsService } from '../../services/dynamic-fields.service';
 
 const ACTIONS = [
@@ -53,12 +54,16 @@ export function AdminAuditPage() {
           onChange={(e) => setFilters((f) => ({ ...f, fieldKey: e.target.value || undefined, page: 1 }))}
           style={{ maxWidth: 200 }}
         />
-        <select
+        <Select
+          size="sm"
+          className="w-[180px]"
+          placeholder="Any action"
           value={filters.action ?? ''}
-          onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value || undefined, page: 1 }))}
-        >
-          {ACTIONS.map((a) => <option key={a} value={a}>{a || 'Any action'}</option>)}
-        </select>
+          onChange={(v) => setFilters((f) => ({ ...f, action: v || undefined, page: 1 }))}
+          allowClear
+          clearLabel="Any action"
+          options={ACTIONS.filter((a) => a).map((a) => ({ value: a, label: a }))}
+        />
         <span className="spacer" />
         <Button variant="ghost" onClick={() => setFilters({ page: 1, pageSize: 50 })}>Clear</Button>
       </div>

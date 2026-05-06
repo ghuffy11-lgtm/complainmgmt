@@ -5,6 +5,7 @@ import { DepartmentsService } from '../services/departments.service';
 import { UsersService } from '../services/users.service';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import { Select } from './ui/Select';
 import { errorMessage, useToast } from './ui/Toast';
 
 type Props = {
@@ -86,28 +87,33 @@ export function AssignmentDialog({ open, complaintId, current, onClose, canSeeUs
     >
       <div className="field">
         <label>Department</label>
-        <select value={departmentId ?? ''} onChange={(e) => setDepartmentId(e.target.value || null)}>
-          <option value="">— pick a department —</option>
-          {(departmentsQ.data ?? []).filter((d) => d.isActive).map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
-          ))}
-        </select>
+        <Select
+          placeholder="Pick a department"
+          value={departmentId ?? ''}
+          onChange={(v) => setDepartmentId(v || null)}
+          options={(departmentsQ.data ?? []).filter((d) => d.isActive).map((d) => ({
+            value: d.id,
+            label: d.name,
+          }))}
+        />
         <span className="hint">Required. The assignee list below narrows to members of this department.</span>
       </div>
 
       {canSeeUsers && (
         <div className="field">
           <label>Assigned to (optional)</label>
-          <select
+          <Select
+            placeholder={departmentId ? 'Department queue' : 'Pick a department first'}
             value={userId ?? ''}
-            onChange={(e) => setUserId(e.target.value || null)}
+            onChange={(v) => setUserId(v || null)}
             disabled={!departmentId}
-          >
-            <option value="">— department queue —</option>
-            {(usersQ.data?.data ?? []).map((u) => (
-              <option key={u.id} value={u.id}>{u.displayName} ({u.username})</option>
-            ))}
-          </select>
+            allowClear
+            clearLabel="Department queue"
+            options={(usersQ.data?.data ?? []).map((u) => ({
+              value: u.id,
+              label: `${u.displayName} (${u.username})`,
+            }))}
+          />
           {departmentId && usersQ.data && usersQ.data.data.length === 0 && (
             <span className="hint">No active members in this department yet.</span>
           )}

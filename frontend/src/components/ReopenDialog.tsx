@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ComplaintsService } from '../services/complaints.service';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import { Select } from './ui/Select';
 import { errorMessage, useToast } from './ui/Toast';
 import type { ComplaintStatus } from '../types/api';
 
@@ -70,9 +71,11 @@ export function ReopenDialog({ open, complaintId, currentStatus, onClose }: Prop
       </p>
       <div className="field">
         <label>Reopen to</label>
-        <select value={target} onChange={(e) => setTarget(e.target.value as ComplaintStatus)}>
-          {REOPEN_TARGETS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
+        <Select
+          value={target}
+          onChange={(v) => setTarget(v as ComplaintStatus)}
+          options={REOPEN_TARGETS.map((t) => ({ value: t.value, label: t.label }))}
+        />
       </div>
       <div className="field">
         <label>Note (optional)</label>

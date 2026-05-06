@@ -12,6 +12,8 @@ import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { AuditTimeline } from '../components/AuditTimeline';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { DateInput } from '../components/ui/DateInput';
+import { Select } from '../components/ui/Select';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
 import { PriorityBadge, StatusBadge } from './ComplaintsListPage';
@@ -235,35 +237,29 @@ export function ComplaintDetailPage() {
             <div className="space-y-1">
               <div className="field">
                 <label className="text-[13px] font-medium text-text-main">Status</label>
-                <select
+                <Select
                   value={c.status}
                   disabled={!canEdit}
-                  onChange={(e) => statusM.mutate(e.target.value as ComplaintStatus)}
-                  className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
-                >
-                  {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                </select>
+                  onChange={(v) => statusM.mutate(v as ComplaintStatus)}
+                  options={STATUSES.map((s) => ({ value: s, label: s.replace('_', ' ') }))}
+                />
               </div>
               <div className="field">
                 <label className="text-[13px] font-medium text-text-main">Priority</label>
-                <select
+                <Select
                   value={c.priority}
                   disabled={!canEdit}
-                  onChange={(e) => priorityM.mutate(e.target.value as ComplaintPriority)}
-                  className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
-                >
-                  {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
+                  onChange={(v) => priorityM.mutate(v as ComplaintPriority)}
+                  options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+                />
               </div>
               <div className="field">
                 <label className="text-[13px] font-medium text-text-main">Complaint date</label>
-                <input
-                  type="date"
+                <DateInput
                   value={c.complaintDate ?? ''}
                   disabled={!canEdit}
                   max={new Date().toISOString().slice(0, 10)}
                   onChange={(e) => complaintDateM.mutate(e.target.value || null)}
-                  className="h-10 w-full bg-surface border border-border-strong rounded-md px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-surface-2 disabled:opacity-50"
                 />
               </div>
             </div>
