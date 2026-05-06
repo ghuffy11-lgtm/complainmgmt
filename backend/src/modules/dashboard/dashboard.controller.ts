@@ -27,13 +27,18 @@ export class DashboardController {
   /** Resolves the effective department filter for the request.
    *  Returns:
    *    - `null` (full picture) when caller has dashboard:read and didn't ask to narrow.
-   *    - `[deptId]` when caller has dashboard:read and supplied ?departmentId=.
-   *    - `actor.departmentIds` when caller has only dashboard.own:read.
-   *  Throws NO_DEPARTMENTS when a scoped caller has no active memberships. */
+   *    - `[deptId]` when caller has dashboard:read and supplied ?departmentId=,
+   *      OR when a `dashboard.own:read` caller drilled into one of their
+   *      own department memberships.
+   *    - `actor.departmentIds` (full membership set) when caller has only
+   *      dashboard.own:read and didn't narrow.
+   *  Throws NO_DEPARTMENTS when a scoped caller has no active memberships,
+   *  or DEPT_NOT_MEMBER when they tried to narrow to a dept they don't belong to. */
   private resolveScope(actor: AuthUser, requested?: string): string[] | null {
     const hasFullAccess = hasPermission(actor.permissions, 'dashboard:read');
+    const want = requested?.trim();
     if (hasFullAccess) {
-      return requested && requested.trim() ? [requested] : null;
+      return want ? [want] : null;
     }
     const ids = (actor.departmentIds ?? []).filter((d) => d && d.trim());
     if (ids.length === 0) {
@@ -41,6 +46,15 @@ export class DashboardController {
         code: 'NO_DEPARTMENTS',
         hint: 'Ask an admin to add you to at least one department.',
       });
+    }
+    if (want) {
+      // Scoped users may narrow into one of their own memberships, but
+      // not pick a dept outside their set. Refuse rather than silently
+      // ignore so the frontend can surface the misconfiguration.
+      if (!ids.includes(want)) {
+        throw new ForbiddenException({ code: 'DEPT_NOT_MEMBER' });
+      }
+      return [want];
     }
     return ids;
   }

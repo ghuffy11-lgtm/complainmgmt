@@ -312,10 +312,27 @@ function UserDashboard() {
     : myDeptNames.length === 1 ? myDeptNames[0]
     : `${myDeptNames.length} departments`;
 
-  const summaryQ = useQuery({ queryKey: ['dashboard', 'summary', 'mine'], queryFn: () => DashboardService.summary() });
-  const statusQ = useQuery({ queryKey: ['dashboard', 'by-status', 'mine'], queryFn: () => DashboardService.byStatus() });
-  const priorityQ = useQuery({ queryKey: ['dashboard', 'by-priority', 'mine'], queryFn: () => DashboardService.byPriority() });
-  const agingQ = useQuery({ queryKey: ['dashboard', 'aging', 'mine'], queryFn: () => DashboardService.aging() });
+  // Department drilldown for users in 2+ depts (typically supervisors
+  // covering multiple wards). null = aggregate across all my memberships.
+  const [departmentId, setDepartmentId] = React.useState<string | null>(null);
+  const deptScope = departmentId ? { departmentId } : {};
+
+  const summaryQ = useQuery({
+    queryKey: ['dashboard', 'summary', 'mine', departmentId],
+    queryFn: () => DashboardService.summary(deptScope),
+  });
+  const statusQ = useQuery({
+    queryKey: ['dashboard', 'by-status', 'mine', departmentId],
+    queryFn: () => DashboardService.byStatus(deptScope),
+  });
+  const priorityQ = useQuery({
+    queryKey: ['dashboard', 'by-priority', 'mine', departmentId],
+    queryFn: () => DashboardService.byPriority(deptScope),
+  });
+  const agingQ = useQuery({
+    queryKey: ['dashboard', 'aging', 'mine', departmentId],
+    queryFn: () => DashboardService.aging(deptScope),
+  });
 
   // Same TimeWindow shape as the manager dashboard so the picker's
   // "Specific month…" entry actually does something. UserDashboard
@@ -327,31 +344,60 @@ function UserDashboard() {
   const windowLabel = window.kind === 'days' ? `the last ${window.days} days` : monthLabel(window.month);
 
   const trendQ = useQuery({
-    queryKey: ['dashboard', 'by-date', 'mine', windowKey],
-    queryFn: () => DashboardService.byDate(windowOpts),
+    queryKey: ['dashboard', 'by-date', 'mine', windowKey, departmentId],
+    queryFn: () => DashboardService.byDate({ ...windowOpts, ...deptScope }),
   });
   const trendSeries = useTrendSeries(trendQ.data?.data, window);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
-  // Click-throughs land on the complaints list which already scopes to the
-  // user's departments via complaint.own:read — no extra ?departmentId
-  // needed (and supplying just one would be wrong for multi-dept users).
-  const linkBase = '/complaints';
+  // Click-throughs land on the complaints list which scopes via
+  // complaint.own:read. When the dashboard is narrowed to one dept we
+  // also pin the list filter so the click-through matches.
+  const linkBase = departmentId
+    ? `/complaints?departmentId=${departmentId}`
+    : '/complaints';
+  const sep = linkBase.includes('?') ? '&' : '?';
+
+  // Member-only department list for the picker. Only show the picker
+  // when the user actually has multiple memberships — single-dept users
+  // would just see one redundant entry.
+  const myDeptOptions = (departmentsQ.data ?? []).filter(
+    (d) => myDeptIds.includes(d.id) && d.isActive,
+  );
+  const showDeptPicker = myDeptOptions.length > 1;
+
+  // Friendly label shown in the heading badge.
+  const scopeLabel = departmentId
+    ? (myDeptOptions.find((d) => d.id === departmentId)?.name ?? myDeptLabel)
+    : myDeptLabel;
 
   return (
     <section className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
-          <Badge variant="primary">{myDeptLabel}</Badge>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
+            <Badge variant="primary">{scopeLabel}</Badge>
+          </div>
+          <p className="text-sm text-text-muted mt-1">
+            {departmentId
+              ? `Showing ${scopeLabel} only.`
+              : 'Showing complaints assigned to your departments.'}
+          </p>
         </div>
-        <p className="text-sm text-text-muted mt-1">Showing complaints assigned to your department.</p>
+        {showDeptPicker && (
+          <DepartmentScopePicker
+            departments={myDeptOptions}
+            value={departmentId}
+            onChange={setDepartmentId}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KpiLink to={linkBase} label="Total complaints" value={summaryQ.data?.total ?? '—'} />
-        <KpiLink to={`${linkBase}?status=open`} label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
-        <KpiLink to={`${linkBase}?priority=critical`} label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
+        <KpiLink to={`${linkBase}${sep}status=open`} label="Currently open" value={summaryQ.data?.open ?? '—'} emphasis="primary" />
+        <KpiLink to={`${linkBase}${sep}priority=critical`} label="High / critical" value={summaryQ.data?.highPriority ?? '—'} emphasis="warn" />
       </div>
 
       <Card
@@ -370,7 +416,7 @@ function UserDashboard() {
             name: r.status.replace('_', ' '),
             value: r.count,
             color: STATUS_COLORS[r.status] ?? SLATE_500,
-            link: `${linkBase}?status=${encodeURIComponent(r.status)}`,
+            link: `${linkBase}${sep}status=${encodeURIComponent(r.status)}`,
           }))}
           loading={statusQ.isLoading}
         />
@@ -380,7 +426,7 @@ function UserDashboard() {
             key: r.priority,
             count: r.count,
             color: PRIORITY_COLORS[r.priority] ?? SLATE_500,
-            link: `${linkBase}?priority=${encodeURIComponent(r.priority)}`,
+            link: `${linkBase}${sep}priority=${encodeURIComponent(r.priority)}`,
           }))}
           loading={priorityQ.isLoading}
           primary={primary}
