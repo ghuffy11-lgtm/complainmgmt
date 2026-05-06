@@ -70,7 +70,7 @@ A user can hold both — the broader `:read` always wins, no scoping is applied.
 
 ### Override
 
-`complaint.field:<key>:override` lets a user write a value even when the field is **locked** by another user. Use sparingly; every override is recorded as a `lock_override` entry in the audit log.
+`complaint.field:<key>:override` lets a user write a value even when the field is **locked** by another user. The override holder still sees the field as locked when they open the complaint — same 🔒 indicator everyone else sees — but a small **Unlock** button appears next to the lock icon. Clicking it reveals the editable input for that one field, and saving emits a `lock_override` audit row. Refreshing or navigating away resets the unlock, so an override is always a deliberate, fresh click. Use sparingly.
 
 ## 3. Departments
 
@@ -112,7 +112,7 @@ Common gotcha: `{"min":8, "max":8}` on a number field means "value must equal 8"
 
 **For dropdowns:** add the allowed options on the field's detail page. Marking an option inactive hides it from new entries but preserves its label on existing complaints.
 
-**Locking:** when set to `first_writer_wins`, the first user who writes a non-empty value becomes the field owner. Others can read but not modify; only users with the `:override` permission can change it (and that change is audited).
+**Locking:** when set to `first_writer_wins`, the first user who writes a non-empty value becomes the field owner. Others see the field with a 🔒 lock icon and a disabled input. Only users with the `:override` permission can change it — they see the same lock plus an **Unlock** button next to the icon, must click it to reveal the editable input, and the resulting save is recorded as a `lock_override` entry in the audit log. The unlock state is per-session: refreshing the page resets it.
 
 System fields (Patient Complaint, Complaint Investigation, Action Taken, PRO, plus seeded number fields like Mobile Number and File ID) ship pre-configured. You can deactivate them but not delete them.
 
