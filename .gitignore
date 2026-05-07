@@ -12,5 +12,7 @@ coverage/
 nginx/certs/*.pem
 nginx/certs/*.key
 nginx/certs/*.crt
+nginx/certs/*-backup*
+nginx/certs/*.bak
 !nginx/certs/generate-dev-certs.sh
 !nginx/certs/README.md
