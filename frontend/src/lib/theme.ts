@@ -127,8 +127,9 @@ export function applyThemeFamilyToRoot(family: ThemeFamily): void {
   root.style.setProperty('--primary-active', family.primaryActive);
   root.style.setProperty('--primary-bg', family.primaryBg);
   root.style.setProperty('--primary-border', family.primaryBorder);
-  root.style.setProperty('--sidebar', family.sidebar);
-  root.style.setProperty('--sidebar-2', family.sidebar2);
+  // Sidebar background tones are now driven by the static :root values in
+  // styles.css (light slate). Only the accent stays brand-tinted so the
+  // active-row highlight reflects the admin Branding primary.
   root.style.setProperty('--sidebar-accent', family.sidebarAccent);
 }
 

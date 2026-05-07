@@ -116,10 +116,10 @@
   --success-bg: #ecfdf5;
   --success-border: #d1fae5;
 
-  --sidebar: #0f172a;
-  --sidebar-2: #1e293b;
-  --sidebar-text: #f8fafc;
-  --sidebar-text-muted: #94a3b8;
+  --sidebar: #f8fafc;
+  --sidebar-2: #e2e8f0;
+  --sidebar-text: #0f172a;
+  --sidebar-text-muted: #64748b;
   --sidebar-accent: #3b82f6;
 
   --focus-ring: 0 0 0 2px #fff, 0 0 0 4px #2563eb;
