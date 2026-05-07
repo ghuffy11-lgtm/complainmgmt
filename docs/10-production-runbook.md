@@ -9,8 +9,40 @@ A step-by-step procedure for bringing up CTS on a Linux server reachable by IP o
 A Linux server (Ubuntu 22.04 / 24.04 / Debian 12 / similar) with:
 - Root or sudo access
 - Outbound internet for `git clone` + `docker pull`
-- TCP port **443** open from where users will connect (configure your firewall / `ufw allow 443/tcp` if applicable)
+- TCP port **443** open from where users will connect (configure your firewall / `ufw allow 443/tcp` if applicable). If port 443 is already in use by another service on this host, see "Coexistence with another web stack" below.
 - At least 2 CPU cores, 4 GB RAM, 20 GB disk free
+
+### Coexistence with another web stack on the same host (optional)
+
+If the host already runs Apache / nginx / IIS / Laravel / etc. on ports 80 and 443, CTS can run alongside without touching that stack. Pick non-conflicting host ports for CTS — `8080` and `8443` are the conventional choices. The values are set in `.env`:
+
+```
+NGINX_HTTP_PORT=8080
+NGINX_HTTPS_PORT=8443
+CORS_ORIGINS=https://<your-cts-hostname>:8443
+```
+
+Users then access CTS at `https://<your-cts-hostname>:8443/`. To get the port out of the URL later, add a reverse-proxy block to the host's existing web server pointing the CTS hostname at `127.0.0.1:8443`.
+
+### Dedicated disk for Docker storage (recommended)
+
+Mounting `/var/lib/docker` on its own disk before installing Docker isolates Docker's growing data (images, container layers, named volumes, build cache) from the OS root volume. A runaway image build then can't fill `/` and crash the OS or other services on the host. Do this **before** installing Docker so Docker uses the disk from the start; otherwise you'll have to stop Docker, move `/var/lib/docker` contents over, and remount.
+
+```bash
+# Identify the new device (here /dev/sdb)
+lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINT
+sudo mkfs.ext4 -L docker /dev/sdb
+sudo mkdir -p /var/lib/docker
+UUID=$(sudo blkid -s UUID -o value /dev/sdb)
+echo "UUID=$UUID  /var/lib/docker  ext4  defaults,nofail  0  2" | sudo tee -a /etc/fstab
+sudo mount -a
+```
+
+Use `nofail` so a missing disk after a reboot doesn't block boot — Docker fails to start instead of the whole server hanging.
+
+If the host is a virtual machine and you've hot-attached the disk but `lsblk` doesn't show it, trigger a SCSI rescan: `for h in /sys/class/scsi_host/host*; do echo "- - -" | sudo tee "$h/scan" >/dev/null; done`.
+
+### Install Docker
 
 Install Docker (skip if already installed):
 
@@ -21,7 +53,17 @@ sudo usermod -aG docker $USER     # then log out + back in so the group takes ef
 docker compose version            # confirms the compose plugin is installed
 ```
 
-Install git if not already:
+**Storage driver gotcha (Docker 29.x):** the install on Ubuntu 22.04 sometimes defaults to the `overlayfs` (containerd image-store) driver. That driver has known race conditions when building multiple images in parallel that lock content blobs and fail with `mount callback failed … device or resource busy` errors during `docker compose build`. Switch to the classic, stable `overlay2` driver before any build:
+
+```bash
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}
+EOF
+sudo systemctl restart docker
+docker info | grep "Storage Driver"   # should print: overlay2
+```
+
+### Install git
 
 ```bash
 sudo apt update && sudo apt install -y git openssl
@@ -38,6 +80,11 @@ git checkout v1.0.0
 ```
 
 (Anchoring to the tag means future `git pull` commands won't surprise you with mid-development code.)
+
+If the repo is **private**, the HTTPS clone above will prompt for credentials and fail under automation. Two options:
+
+- **Deploy key (recommended for read-only deploys).** On the prod server, generate a dedicated keypair (`ssh-keygen -t ed25519 -f ~/.ssh/github-deploy -N ''`), add a `Host github.com` block to `~/.ssh/config` pointing at that key with `IdentitiesOnly yes`, then paste the public key into the repo's **Deploy keys** page on GitHub (`https://github.com/<owner>/<repo>/settings/keys` — *not* the account-wide `github.com/settings/keys` page). Leave "Allow write access" unchecked. Switch the clone URL to SSH: `git clone git@github.com:<owner>/<repo>.git`.
+- **Personal access token.** Create a fine-grained PAT scoped to this repo with read-only "Contents" permission, configure git on prod to use HTTPS with that token. Slightly less restrictive than a deploy key.
 
 ## 2. Generate strong secrets
 
@@ -123,27 +170,34 @@ Open `https://<PROD_IP>` in a browser. Click through the cert warning the first 
 
 ## 8. Set up backups
 
-Wire the existing backup script to cron so you have nightly Postgres dumps:
+Wire the existing backup script to cron so you have nightly Postgres dumps. If you set up a dedicated docker disk in section 0, put the backups on that disk too — the OS volume stays untouched as Docker data and backups grow together. The example below assumes that layout; adjust `BACKUP_DIR` if you didn't.
 
 ```bash
-mkdir -p /var/backups/cts
-sudo crontab -e
+sudo install -d -o $USER -g $USER -m 700 /var/lib/docker/cts-backups
+# /var/lib/docker is mode 710 by default — let your user traverse into its own subdir
+sudo chmod 711 /var/lib/docker
+crontab -e
 ```
 
-Add:
+Add this line under your own user's crontab (not root's — running as the deploy user keeps the backup process unprivileged):
 
 ```
-0 2 * * * cd /opt/complainmgmt && BACKUP_DIR=/var/backups/cts /opt/complainmgmt/scripts/backup.sh >> /var/log/cts-backup.log 2>&1
+0 2 * * * cd /opt/complainmgmt && BACKUP_DIR=/var/lib/docker/cts-backups /opt/complainmgmt/scripts/backup.sh >> /var/log/cts-backup.log 2>&1
 ```
-
-The script keeps the last 14 days by default (look inside `scripts/backup.sh` to adjust). Test it now:
 
 ```bash
-BACKUP_DIR=/var/backups/cts ./scripts/backup.sh
-ls -lah /var/backups/cts/
+sudo touch /var/log/cts-backup.log
+sudo chown $USER:$USER /var/log/cts-backup.log
 ```
 
-You should see a fresh `.sql.gz` dump. Copy these off the server to a separate location (S3, NAS, second VM) periodically — a backup on the same disk doesn't survive a disk failure.
+Test it now:
+
+```bash
+BACKUP_DIR=/var/lib/docker/cts-backups ./scripts/backup.sh
+ls -lah /var/lib/docker/cts-backups/
+```
+
+You should see a fresh `.sql.gz` dump. The script handles its own retention. Copy these off the server to a separate location (S3, NAS, second VM) periodically — backups on the same physical machine don't survive a disk or host failure.
 
 ## 9. Open it to users
 
