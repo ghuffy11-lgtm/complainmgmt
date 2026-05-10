@@ -2,10 +2,9 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# install deps with cached layer
-COPY package.json ./
-# (no lockfile in scaffold; production builds should commit one and use `npm ci`)
-RUN npm install --no-audit --no-fund
+# install deps with cached layer (lockfile-deterministic via `npm ci`)
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
@@ -16,9 +15,9 @@ FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
-# only production deps in the final image
-COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund \
+# only production deps in the final image (lockfile-deterministic)
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund \
  && npm cache clean --force
 
 COPY --from=build /app/dist ./dist

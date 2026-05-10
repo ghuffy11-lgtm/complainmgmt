@@ -104,4 +104,50 @@ export class AuthAuditController {
 
     return { data, meta: { page: p, pageSize: ps, total } };
   }
+
+  /**
+   * GET /admin/auth-audit/tripwire
+   *
+   * Lightweight aggregate for the "Recent failures by IP" panel on
+   * the Login Activity page. Returns IPs that have produced at least
+   * `threshold` failure events in the last `windowHours` hours,
+   * sorted by count DESC.
+   *
+   * Defaults: threshold=10, windowHours=24. Both clamped to sane
+   * ranges so an admin can't accidentally DoS the query with
+   * threshold=1, windowHours=720.
+   *
+   * Read-only; no IP block / lockout side-effect — this is a
+   * surfacing tool, not an enforcement one.
+   */
+  @Get('tripwire')
+  @RequirePermissions('auth_audit:read')
+  async tripwire(
+    @Query('threshold') thresholdParam = '10',
+    @Query('windowHours') windowHoursParam = '24',
+  ) {
+    const threshold = Math.min(1000, Math.max(2, parseInt(thresholdParam, 10) || 10));
+    const windowHours = Math.min(168, Math.max(1, parseInt(windowHoursParam, 10) || 24));
+    const since = new Date(Date.now() - windowHours * 3600_000);
+
+    const rows = await this.repo
+      .createQueryBuilder('a')
+      .select('a.ip', 'ip')
+      .addSelect('COUNT(*)::int', 'count')
+      .addSelect('MAX(a.occurred_at)', 'lastSeen')
+      .where('a.ip IS NOT NULL')
+      .andWhere('a.occurred_at >= :since', { since })
+      .andWhere('a.event IN (:...failureEvents)', { failureEvents: FAILURE_EVENTS })
+      .groupBy('a.ip')
+      .having('COUNT(*) >= :threshold', { threshold })
+      .orderBy('count', 'DESC')
+      .addOrderBy('"lastSeen"', 'DESC')
+      .limit(50)
+      .getRawMany<{ ip: string; count: number; lastSeen: Date }>();
+
+    return {
+      data: rows.map((r) => ({ ip: r.ip, count: r.count, lastSeen: r.lastSeen })),
+      meta: { threshold, windowHours, since: since.toISOString() },
+    };
+  }
 }

@@ -70,6 +70,15 @@ export function AdminLoginActivityPage() {
     queryFn: () => AuthAuditService.search(filters),
   });
 
+  // Tripwire panel — IPs with ≥10 failures in the last 24h. Refreshes
+  // every minute (cheap aggregate query) so it stays current while the
+  // admin is investigating without manual refresh.
+  const tripwireQ = useQuery({
+    queryKey: ['auth-audit-tripwire'],
+    queryFn: () => AuthAuditService.tripwire(),
+    refetchInterval: 60_000,
+  });
+
   const rows = q.data?.data ?? [];
   const total = q.data?.meta.total ?? 0;
   const page = q.data?.meta.page ?? filters.page ?? 1;
@@ -84,6 +93,39 @@ export function AdminLoginActivityPage() {
           changes, and 2FA lifecycle. Filter to investigate.
         </p>
       </div>
+
+      {tripwireQ.data && tripwireQ.data.data.length > 0 && (
+        <div
+          className="px-4 py-3 border-b border-border"
+          style={{ background: 'var(--danger-bg)', borderBottomColor: 'var(--danger-border)' }}
+        >
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h4 className="font-semibold text-text-main m-0 text-sm">
+              Recent failures by IP
+            </h4>
+            <span className="text-xs text-text-muted">
+              ≥ {tripwireQ.data.meta.threshold} failures in the last{' '}
+              {tripwireQ.data.meta.windowHours}h
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {tripwireQ.data.data.map((r) => (
+              <button
+                key={r.ip}
+                type="button"
+                onClick={() =>
+                  setFilters((f) => ({ ...f, ip: r.ip, success: 'false', page: 1 }))
+                }
+                className="bg-surface border border-border hover:border-danger px-2 py-1 rounded mono text-xs cursor-pointer text-left transition-colors"
+                title={`${r.count} failures · last ${new Date(r.lastSeen).toLocaleString()}`}
+              >
+                <span className="font-semibold">{r.ip}</span>
+                <span className="text-text-muted ml-1.5">× {r.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="toolbar p-4 bg-surface-2/30 border-b border-border flex flex-wrap items-center gap-2">
         <input

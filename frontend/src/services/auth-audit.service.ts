@@ -45,8 +45,28 @@ export type AuthAuditPage = {
   meta: { page: number; pageSize: number; total: number };
 };
 
+export type AuthAuditTripwireRow = {
+  ip: string;
+  count: number;
+  lastSeen: string;
+};
+
+export type AuthAuditTripwireResponse = {
+  data: AuthAuditTripwireRow[];
+  meta: { threshold: number; windowHours: number; since: string };
+};
+
 export const AuthAuditService = {
   search(params: AuthAuditFilter = {}): Promise<AuthAuditPage> {
     return api.get<AuthAuditPage>('/admin/auth-audit', { params }).then((r) => r.data);
+  },
+  /** IPs with ≥ threshold failures in the last windowHours hours.
+   *  Defaults: threshold=10, windowHours=24. */
+  tripwire(threshold = 10, windowHours = 24): Promise<AuthAuditTripwireResponse> {
+    return api
+      .get<AuthAuditTripwireResponse>('/admin/auth-audit/tripwire', {
+        params: { threshold, windowHours },
+      })
+      .then((r) => r.data);
   },
 };

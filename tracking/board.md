@@ -4,13 +4,14 @@ Updated: 2026-05-10
 
 | To Do | In Progress | Review | Done |
 |---|---|---|---|
-| E17 Batch A — T-405, T-406 (tripwire + retention) | — | — | T-001..T-125 (1.0) |
-| T-130 `INotificationTransport` real impl (post-1.0) |  |  | T-200..T-250 (E15 — UX feedback) |
-|  |  |  | T-300..T-330 (E16 — round-2 UX) |
-|  |  |  | T-400..T-404 (E17 Batch A core) |
-|  |  |  | T-410..T-414 (E17 Batch B — unlock tooling) |
-|  |  |  | T-420..T-430 (E17 Batch C — TOTP + backup codes) |
+| T-130 `INotificationTransport` real impl (post-1.0) | — | — | T-001..T-125 (1.0) |
+| Future: LDAP provider |  |  | T-200..T-250 (E15 — UX feedback) |
+| Future: S3 attachment store |  |  | T-300..T-330 (E16 — round-2 UX) |
+| Future: log shipping / metrics |  |  | T-400..T-406 (E17 Batch A — auth audit + tripwire + retention) |
+| Future: container digest pinning |  |  | T-410..T-414 (E17 Batch B — unlock tooling) |
+| Future: dark-mode (tokens already in place) |  |  | T-420..T-430 (E17 Batch C — TOTP + backup codes) |
 |  |  |  | T-440..T-447 (E17 Batch D — reset + enforcement + thresholds) |
+|  |  |  | T-450, T-451, T-460 (E17 hot fixes + build hygiene) |
 | T-130 `INotificationTransport` real impl (post-1.0) |  |  |  |
 | Future: LDAP provider |  |  |  |
 | Future: S3 attachment store |  |  |  |
@@ -20,6 +21,7 @@ Updated: 2026-05-10
 
 ## Recently moved
 
+- 2026-05-10 — E17 Batch A polish (T-405, T-406) + T-460 build hygiene shipped: tripwire endpoint + Login Activity panel for IPs with ≥10 failures in 24h, nightly retention cron at 03:00 UTC reading `auth_audit.retention_days` from `system_settings` (default 365), Dockerfile switched to lockfile + `npm ci` so native-module prebuilds are reproducible. **E17 done.**
 - 2026-05-10 — E17 Batch D (T-440..T-447) shipped: `user:reset_2fa` permission + admin reset endpoint + UI button, `TwoFactorRequiredGuard` enforcing mandatory 2FA for admin role (with frontend force-enrollment dialog), `failed_2fa_count` participates in the same lockout window as password failures, `LockoutPolicy` service moves thresholds out of hardcoded constants and into `system_settings` (cache-invalidated on save), API docs updated, new `scripts/smoke-test-2fa.sh` walks the full 11-step happy path with stdlib-only TOTP computation. **E17 done modulo Batch A polish (T-405/T-406).**
 - 2026-05-10 — E17 Batch C (T-420..T-430) shipped: TOTP-based 2FA. New schema (`totp_secret_enc`, `totp_enrolled_at`, `failed_2fa_count`, `user_backup_codes`), AES-256-GCM `SecretCipher`, `TwoFactorService` with otplib + qrcode, four endpoints (`/auth/2fa/{setup,enable,verify,disable}`), login flow split with single-use challenge JWTs, 3-step enrollment wizard with backup-code download/copy/print, login-page code prompt with TOTP↔backup-code toggle. `TOTP_ENCRYPTION_KEY` added to `.env` + compose. Backend + frontend rebuilt and live; verified routes mounted, audit pipe still emitting `login.password_failed` for non-2FA users.
 - 2026-05-10 — E17 Batch B (T-410..T-414) shipped: `user:unlock` permission, `POST /users/:id/unlock` endpoint emitting `account.unlocked_by_admin`, "Unlock" button + lock badge on Users admin page, `scripts/unlock-user.sh` break-glass with runbook entry. Backend + frontend rebuilt and live.

@@ -188,6 +188,20 @@ GRANT INSERT, SELECT ON complaint_audit_log TO cts_app;
 
 Point the backend's `DATABASE_URL` at `cts_app`. Run migrations with `cts_owner`. With this split, even an application-level bug (or compromise) cannot tamper with audit history — privilege check rejects it before the trigger sees it.
 
+The same pattern applies to `auth_audit_log` (added in `0022`). One caveat: the nightly retention job that prunes old auth-audit rows runs as the application role and needs `DELETE` on that table. Two ways to make it work under the split:
+
+```sql
+-- Either grant DELETE to the app role for the auth-audit table only:
+GRANT DELETE ON auth_audit_log TO cts_app;
+
+-- OR keep the app role read/insert only, and run the retention separately
+-- as cts_owner via cron:
+psql -U cts_owner -d <db> -c \
+  "DELETE FROM auth_audit_log WHERE occurred_at < NOW() - INTERVAL '365 days';"
+```
+
+The retention window is `auth_audit.retention_days` in `system_settings` (default 365; set to 0 to retain forever). The append-only BEFORE UPDATE trigger was loosened in `0027` to allow exactly the FK-cascade case (`user_id` non-null → null when a user is deleted), so DELETEing a user with audit history works; arbitrary UPDATE is still rejected.
+
 ## Hardening checklist (post-bring-up)
 
 - [ ] `POSTGRES_PASSWORD` is a 20+ char random string (verify in `.env`).
