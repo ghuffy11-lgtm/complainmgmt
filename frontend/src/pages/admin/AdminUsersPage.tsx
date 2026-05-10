@@ -304,7 +304,12 @@ function EditUserModal({
   const [email, setEmail] = useState(user.email ?? '');
   const [departmentIds, setDepartmentIds] = useState<string[]>(user.departmentIds ?? []);
   const [primaryId, setPrimaryId] = useState<string>(user.departmentId ?? '');
-  const [roleIds, setRoleIds] = useState<string[]>([]);
+  // Pre-populate from the user's current roles. The role-picker checkbox
+  // state is now authoritative on save — unticking a role actually
+  // removes it (used to be: empty array meant "leave alone", which made
+  // it impossible to clear a role from the modal and broke the mental
+  // model of "what I see is what I get").
+  const [roleIds, setRoleIds] = useState<string[]>(user.roleIds ?? []);
 
   const updateM = useMutation({
     mutationFn: async () => {
@@ -314,7 +319,9 @@ function EditUserModal({
         departmentIds,
         departmentId: primaryId === '' ? null : primaryId,
       });
-      if (roleIds.length > 0) await UsersService.setRoles(user.id, roleIds);
+      // Always sync roles — if the user un-ticked everything, that's an
+      // intentional "remove all roles" rather than "no change".
+      await UsersService.setRoles(user.id, roleIds);
     },
     onSuccess: () => { toast.success('Saved'); onSaved(); },
     onError: (err) => toast.error(errorMessage(err)),
@@ -349,9 +356,10 @@ function EditUserModal({
           setPrimaryId(next.primaryId);
         }}
       />
-      <div className="field"><label>Replace roles</label>
+      <div className="field"><label>Roles</label>
         <span className="hint">
-          Pick one or more to replace this user's current roles. Leave all unchecked to keep them as-is.
+          Tick the roles this user should have. Saving sets the role list to exactly what's
+          checked — un-ticking removes that role from the user.
         </span>
         <RolePicker roles={roles} value={roleIds} onChange={setRoleIds} />
       </div>
@@ -392,9 +400,38 @@ function DepartmentPicker({
     }
   };
 
+  // Active departments are the only ones we want bulk-selectable —
+  // inactive rows aren't a normal target. `allActiveSelected` flips the
+  // toggle's label and behaviour: true → "Clear all" (deselect actives),
+  // false → "Select all" (add every active to memberships, preserving
+  // any inactive ones already in the set).
+  const activeIds = sorted.filter((d) => d.isActive).map((d) => d.id);
+  const allActiveSelected =
+    activeIds.length > 0 && activeIds.every((id) => memberships.includes(id));
+  const toggleAll = () => {
+    if (allActiveSelected) {
+      const next = memberships.filter((id) => !activeIds.includes(id));
+      const nextPrimary = next.includes(primaryId) ? primaryId : '';
+      onChange({ memberships: next, primaryId: nextPrimary });
+    } else {
+      const next = Array.from(new Set([...memberships, ...activeIds]));
+      const nextPrimary = primaryId || activeIds[0] || '';
+      onChange({ memberships: next, primaryId: nextPrimary });
+    }
+  };
+
   return (
     <div className="field">
-      <label>Departments</label>
+      <div className="flex items-center justify-between">
+        <label className="m-0">Departments</label>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="text-xs text-primary hover:underline bg-transparent border-0 cursor-pointer p-0"
+        >
+          {allActiveSelected ? 'Clear all' : `Select all (${activeIds.length})`}
+        </button>
+      </div>
       <span className="hint">
         Tick every department this user belongs to. The starred row is the primary —
         used to default form pickers and label the dashboard scope.

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { In, Repository, DataSource } from 'typeorm';
 import { RoleEntity } from './entities/role.entity';
 import { PermissionEntity } from './entities/permission.entity';
 import { RolePermissionEntity } from './entities/role-permission.entity';
@@ -95,5 +95,30 @@ export class PermissionsService {
     };
     if (em) return work(em);
     await this.dataSource.transaction(work);
+  }
+
+  /** Batch-load role IDs for a set of users. Used by the admin user list
+   *  to render each user's current role memberships without N+1 queries
+   *  and so the edit modal can pre-check the right boxes. */
+  async listRoleIdsByUser(userIds: string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (userIds.length === 0) return map;
+    const rows = await this.userRoles.find({
+      where: { userId: In(userIds) },
+      select: ['userId', 'roleId'],
+    });
+    for (const r of rows) {
+      const key = String(r.userId);
+      const list = map.get(key) ?? [];
+      list.push(String(r.roleId));
+      map.set(key, list);
+    }
+    return map;
+  }
+
+  /** Convenience for the single-user case (GET /users/:id). */
+  async getRoleIdsForUser(userId: string): Promise<string[]> {
+    const rows = await this.userRoles.find({ where: { userId }, select: ['roleId'] });
+    return rows.map((r) => String(r.roleId));
   }
 }

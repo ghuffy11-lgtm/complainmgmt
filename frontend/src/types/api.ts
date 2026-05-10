@@ -136,6 +136,9 @@ export type UserSummary = {
   departmentId: string | null;
   /** All active department memberships. */
   departmentIds: string[];
+  /** Role IDs the user currently holds. Drives pre-checking of the
+   *  Role picker on the user edit modal. */
+  roleIds: string[];
   lastLoginAt: string | null;
   /** Lockout state — null when not locked. */
   lockedUntil: string | null;

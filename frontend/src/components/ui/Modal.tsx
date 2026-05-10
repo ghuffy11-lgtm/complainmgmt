@@ -45,15 +45,18 @@ export function Modal({ open, title, onClose, children, footer, wide }: ModalPro
             className={cn('modal', wide && 'modal-wide')}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="modal-header">
+            {/* shrink-0 keeps the header pinned even when body overflows */}
+            <div className="modal-header shrink-0">
               <h2 className="text-lg font-semibold text-text-main">{title}</h2>
               <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close" className="p-1">
                 <X size={18} />
               </Button>
             </div>
-            <div className="py-2">{children}</div>
+            {/* flex-1 + overflow-y-auto lets the body scroll inside the
+                modal box without pushing the footer off-screen */}
+            <div className="py-2 flex-1 overflow-y-auto min-h-0">{children}</div>
             {footer && (
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border shrink-0">
                 {footer}
               </div>
             )}

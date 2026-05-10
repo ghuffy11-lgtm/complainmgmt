@@ -259,7 +259,11 @@
   }
 
   .modal {
-    @apply fixed left-1/2 top-1/2 bg-surface rounded-lg p-5 shadow-lg w-full max-w-md;
+    /* `max-h-[90vh] flex flex-col` lets a tall body scroll while the
+     * header + footer stay pinned. Without this, a modal whose content
+     * exceeds the viewport (e.g. the DepartmentPicker checklist with
+     * 40+ departments) pushes the Save button off-screen. */
+    @apply fixed left-1/2 top-1/2 bg-surface rounded-lg p-5 shadow-lg w-full max-w-md max-h-[90vh] flex flex-col;
     transform: translate(-50%, -50%);
     z-index: 51;
     animation: var(--animate-slide-in-bottom);

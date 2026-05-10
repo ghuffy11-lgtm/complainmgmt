@@ -5,10 +5,14 @@ import { CreateUserDto, ResetPasswordDto, SetUserRolesDto, UpdateUserDto } from 
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user.type';
+import { PermissionsService } from '../permissions/permissions.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   @Get()
   @RequirePermissions('admin.users:read')
@@ -23,9 +27,15 @@ export class UsersController {
       isActive:
         isActive === 'true' ? true : isActive === 'false' ? false : undefined,
     });
-    const memberships = await this.users.listMembershipsByUser(data.map((u) => String(u.id)));
+    const ids = data.map((u) => String(u.id));
+    const [memberships, roleIds] = await Promise.all([
+      this.users.listMembershipsByUser(ids),
+      this.permissions.listRoleIdsByUser(ids),
+    ]);
     return {
-      data: data.map((u) => this.toDto(u, memberships.get(String(u.id)) ?? [])),
+      data: data.map((u) =>
+        this.toDto(u, memberships.get(String(u.id)) ?? [], roleIds.get(String(u.id)) ?? []),
+      ),
       meta: { page: Number(page), pageSize: Number(pageSize), total },
     };
   }
@@ -34,21 +44,33 @@ export class UsersController {
   @RequirePermissions('admin.users:manage')
   async create(@Body() dto: CreateUserDto, @CurrentUser() actor: AuthUser) {
     const u = await this.users.create(dto, String(actor.id));
-    return this.toDto(u, await this.users.getMemberships(String(u.id)));
+    const [memberships, roleIds] = await Promise.all([
+      this.users.getMemberships(String(u.id)),
+      this.permissions.getRoleIdsForUser(String(u.id)),
+    ]);
+    return this.toDto(u, memberships, roleIds);
   }
 
   @Get(':id')
   @RequirePermissions('admin.users:read')
   async get(@Param('id') id: string) {
     const u = await this.users.findById(id);
-    return this.toDto(u, await this.users.getMemberships(id));
+    const [memberships, roleIds] = await Promise.all([
+      this.users.getMemberships(id),
+      this.permissions.getRoleIdsForUser(id),
+    ]);
+    return this.toDto(u, memberships, roleIds);
   }
 
   @Patch(':id')
   @RequirePermissions('admin.users:manage')
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     const u = await this.users.update(id, dto);
-    return this.toDto(u, await this.users.getMemberships(id));
+    const [memberships, roleIds] = await Promise.all([
+      this.users.getMemberships(id),
+      this.permissions.getRoleIdsForUser(id),
+    ]);
+    return this.toDto(u, memberships, roleIds);
   }
 
   @Post(':id/roles')
@@ -103,6 +125,7 @@ export class UsersController {
   private toDto = (
     u: import('../auth/entities/user.entity').UserEntity,
     departmentIds: string[],
+    roleIds: string[],
   ) => ({
     id: u.id,
     username: u.username,
@@ -112,6 +135,7 @@ export class UsersController {
     authProvider: u.authProvider,
     departmentId: u.departmentId,
     departmentIds,
+    roleIds,
     lastLoginAt: u.lastLoginAt,
     lockedUntil: u.lockedUntil,
     failedLoginCount: u.failedLoginCount,
