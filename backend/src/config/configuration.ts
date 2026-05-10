@@ -29,13 +29,25 @@ export const envSchema = Joi.object({
   ATTACHMENT_MAX_FILES_PER_COMPLAINT: Joi.number().integer().min(1).max(10).default(5),
   ATTACHMENT_MAX_BYTES: Joi.number().integer().min(1024).default(2 * 1024 * 1024),
   CORS_ORIGINS: Joi.string().default(''),
-  INITIAL_ADMIN_USERNAME: Joi.string().optional(),
-  INITIAL_ADMIN_PASSWORD: Joi.string().min(10).optional(),
-  INITIAL_ADMIN_DISPLAY_NAME: Joi.string().optional(),
+  // INITIAL_ADMIN_* are bootstrap-only — used at first boot to seed the
+  // initial admin row, ignored once that row exists. After bootstrap,
+  // operators typically blank the password line in `.env` for safety.
+  // Accept '' as well as missing-from-input so a cleaned-up .env doesn't
+  // crash the next restart. `loadConfig()` below treats '' as "absent"
+  // when deciding whether to attempt the bootstrap insert.
+  INITIAL_ADMIN_USERNAME: Joi.string().allow('').optional(),
+  INITIAL_ADMIN_PASSWORD: Joi.alternatives()
+    .try(Joi.string().min(10), Joi.string().valid(''))
+    .optional(),
+  INITIAL_ADMIN_DISPLAY_NAME: Joi.string().allow('').optional(),
   // 32 raw bytes → 44 chars in base64 with padding, 43 unpadded.
   // Length validation here is a quick guard — exact length is enforced
-  // at cipher construction time (SecretCipher.create).
-  TOTP_ENCRYPTION_KEY: Joi.string().min(43).optional(),
+  // at cipher construction time (SecretCipher.create). Empty allowed
+  // so an operator who hasn't generated one yet still gets a healthy
+  // boot; the 2FA endpoints respond with TOTP_NOT_CONFIGURED instead.
+  TOTP_ENCRYPTION_KEY: Joi.alternatives()
+    .try(Joi.string().min(43), Joi.string().valid(''))
+    .optional(),
 }).unknown(true);
 
 export function loadConfig(): AppConfig {

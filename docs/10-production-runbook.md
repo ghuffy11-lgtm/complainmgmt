@@ -207,35 +207,117 @@ Once the smoke is green and you've completed the first-login setup, send the URL
 
 ## Updating to a new release
 
-When a new tagged version lands on the repo:
+Production is at **`https://cts.hadiclinic.com.kw`** (host `int`, IP `10.1.27.99`, repo `/opt/complainmgmt`). Deploys are SSH-driven: clone is updated with `git pull`, migrations are applied manually against the running DB, then containers are rebuilt and recreated. Migrations are **not** auto-applied at backend boot — they're mounted to `/docker-entrypoint-initdb.d` which only runs on a fresh DB volume, so manual application is the only path on a populated cluster.
+
+The full procedure, step by step:
 
 ```bash
+ssh <user>@10.1.27.99
 cd /opt/complainmgmt
-git fetch --tags
-git checkout v1.X.Y           # whatever the new tag is
-docker compose build
-docker compose up -d
-BASE=https://<PROD_IP> bash scripts/smoke-test.sh    # confirm 15/15 before walking away
 ```
 
-Migrations apply automatically on backend startup. If anything breaks, see Rollback.
+### 1. Take a DB backup
+
+```bash
+./scripts/backup.sh
+# writes ./backups/cts-YYYY-MM-DD_HHMMSS.sql.gz, retains last 30 days
+```
+
+Verify the file exists and is non-empty before continuing. Restoring from this is your last line of defence if a migration goes sideways.
+
+### 2. Diff what's coming + check for env additions
+
+```bash
+git fetch origin
+git log --oneline ..origin/main          # commits about to land
+git diff ..origin/main -- .env.example   # any new env keys?
+```
+
+If `.env.example` shows new keys, **add them to your `.env` before rebuilding**. The most common surprise is `TOTP_ENCRYPTION_KEY`: if missing on a backend that supports 2FA, the cipher logs a warning and the 2FA endpoints respond with `503 TOTP_NOT_CONFIGURED` — the rest of the app keeps working, but admin enrollment fails. Generate one with `openssl rand -base64 32`.
+
+Watch out for blank `INITIAL_ADMIN_*` lines — operators commonly blank `INITIAL_ADMIN_PASSWORD` after first boot for safety. The schema accepts blank values from `0d9905f` onward, but *missing* the line entirely while the compose file passes `${INITIAL_ADMIN_PASSWORD:-}` (empty) used to crash the boot. If the line is gone, append a placeholder of any 10+ chars (the bootstrap path doesn't run when an admin already exists, so the value is never read):
+
+```bash
+echo "INITIAL_ADMIN_PASSWORD=disabled-after-bootstrap-x9k4" >> .env
+```
+
+### 3. Pull
+
+```bash
+git pull --ff-only origin main
+```
+
+`--ff-only` refuses to merge — if it errors, the local branch has diverged and someone else's commits need handling first.
+
+### 4. Apply new migrations in order
+
+List what hasn't been applied:
+
+```bash
+PG_USER=$(grep ^POSTGRES_USER= .env | cut -d= -f2)
+PG_DB=$(grep ^POSTGRES_DB= .env | cut -d= -f2)
+docker compose exec -T db psql -U "$PG_USER" -d "$PG_DB" -At \
+  -c "SELECT filename FROM schema_migrations ORDER BY filename;" \
+  > /tmp/applied.txt
+ls db/migrations/*.sql | xargs -n1 basename | sort > /tmp/all.txt
+diff /tmp/applied.txt /tmp/all.txt
+```
+
+Apply each new migration in order, in its own transaction:
+
+```bash
+for f in db/migrations/00XX_*.sql ; do  # substitute the new filenames
+  docker compose cp "$f" "db:/tmp/$(basename "$f")"
+  docker compose exec -T db psql -U "$PG_USER" -d "$PG_DB" \
+      --single-transaction --set ON_ERROR_STOP=1 \
+      -f "/tmp/$(basename "$f")"
+done
+```
+
+`--single-transaction --set ON_ERROR_STOP=1` rolls back the whole file on any error; later migrations in the loop won't run.
+
+### 5. Rebuild and restart
+
+```bash
+docker compose up -d --build backend frontend
+```
+
+Roughly 60–120 seconds. The DB stays up; backend is replaced first, then frontend. Active SPA sessions may see one transient 502 before the refresh-token interceptor heals it.
+
+### 6. Verify
+
+```bash
+docker compose ps                                                      # all healthy?
+docker compose logs backend --tail 50 | grep -E "Mapped|ScheduleModule"  # routes mounted?
+curl -ks https://127.0.0.1:8443/api/health                            # status:ok
+BASE=https://127.0.0.1:8443 bash scripts/smoke-test.sh                 # full happy path
+```
+
+If 2FA was part of the release, also run the 2FA smoke once against a temporary user (don't run it against your real admin — it'd self-disable at the end, defeating the mandatory-2FA gate). See `scripts/smoke-test-2fa.sh`.
+
+### 7. If 2FA enforcement just landed
+
+The very next click from any admin user will return `412 MUST_ENROLL_2FA` — the frontend pops a non-dismissable enrollment dialog. Make sure the admin has an authenticator app (Google Authenticator / Authy / 1Password) ready when you complete this deploy, and that they save the 10 backup codes shown on the final step. Without that, lockout is messy: backup codes are hashed in the DB, so admin reset (or a SQL `UPDATE` on `users` clearing `totp_*`) is the only recovery.
 
 ## Rollback
 
+The application can be rolled back without rolling back the schema, as long as the new schema is backward-compatible (additive columns / tables, additive permissions). All E17 migrations (0022..0029) are additive and safe to leave in place during a rollback.
+
 ```bash
 cd /opt/complainmgmt
-git checkout v1.0.0           # or whatever known-good tag you were on
-docker compose build
-docker compose up -d
+git log --oneline -10                          # find the previous known-good commit
+git checkout <previous-sha>
+docker compose up -d --build backend frontend
 ```
 
-Note: rolling back the *application* doesn't roll back database migrations. If a new release applied a destructive schema change you can't tolerate, you'd need to restore from the most recent backup before retrying:
+If a release made a *destructive* schema change you can't tolerate, restore from the most recent backup taken in step 1:
 
 ```bash
-gunzip < /var/backups/cts/cts_backup_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db psql -U cts_app -d complainmgmt
+LATEST=$(ls -1t backups/cts-*.sql.gz | head -1)
+gunzip < "$LATEST" | docker compose exec -T db psql -U "$PG_USER" -d "$PG_DB"
 ```
 
-This is why nightly backups + a good rollback tag are non-negotiable before bringing the system up to users.
+Restore is a full overwrite — all rows since the backup are gone. Coordinate with the user before pulling that lever.
 
 ## Troubleshooting
 
