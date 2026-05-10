@@ -76,15 +76,24 @@ function renderInput(
   };
   switch (field.type) {
     case 'text': {
-      // Read view: render as a paragraph block so long narratives display in
-      // full, with line breaks preserved. Keeps the editable case in a
-      // textarea (with admin-set maxLength when present).
+      // Read view: render as a paragraph block so long narratives display
+      // in full, with line breaks preserved. Wrap it in a field-shaped
+      // container (border / padding / surface) so it still reads as a
+      // discrete field — without that, multiple read-only text fields
+      // visually merge into one block of text. Keeps the editable case
+      // in a textarea (with admin-set maxLength when present).
       if (readOnly) {
         const v = (value as string) ?? '';
-        return v ? (
-          <div className="whitespace-pre-wrap break-words text-[14px] leading-6 text-text-main">{v}</div>
-        ) : (
-          <div className="text-[14px] text-text-muted">—</div>
+        return (
+          <div
+            className={
+              v
+                ? 'whitespace-pre-wrap break-words text-[14px] leading-6 text-text-main rounded-md border border-border bg-surface-2/40 px-3 py-2 min-h-[40px]'
+                : 'text-[14px] text-text-muted rounded-md border border-border bg-surface-2/40 px-3 py-2 min-h-[40px]'
+            }
+          >
+            {v || '—'}
+          </div>
         );
       }
       return (

@@ -787,13 +787,29 @@ function BarPanel({
   primary: string;
 }) {
   const total = data.reduce((s, d) => s + d.count, 0);
+  // Horizontal bar charts (by-department) need ~26px per bar to be
+  // readable. With 47 departments the old fixed 180px squished bars to
+  // ~3px each. Scale height to the row count, with a sensible floor so
+  // small datasets don't look weirdly tiny. Vertical charts keep their
+  // original 180px — they have plenty of horizontal room.
+  // Y-axis label width also scales with the longest label, capped so
+  // it doesn't eat the chart on extreme outliers.
+  const horizontalHeight = horizontal
+    ? Math.max(180, data.length * 26)
+    : 180;
+  const longestLabel = horizontal
+    ? data.reduce((m, d) => Math.max(m, d.key.length), 0)
+    : 0;
+  const yAxisWidth = horizontal
+    ? Math.min(260, Math.max(120, longestLabel * 6))
+    : 30;
   return (
     <Card title={title || undefined} subtitle={subtitle}>
       {loading && <p className="muted">Loading…</p>}
       {!loading && total === 0 && <p className="muted">No data yet.</p>}
       {!loading && total > 0 && (
         <>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={horizontalHeight}>
             <BarChart
               data={data}
               layout={horizontal ? 'vertical' : 'horizontal'}
@@ -806,7 +822,7 @@ function BarPanel({
                 <XAxis dataKey="key" tick={{ fontSize: 11, fill: SLATE_500 }} interval={0} axisLine={false} tickLine={false} />
               )}
               {horizontal ? (
-                <YAxis type="category" dataKey="key" width={120} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="key" width={yAxisWidth} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} interval={0} />
               ) : (
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: SLATE_500 }} axisLine={false} tickLine={false} />
               )}
