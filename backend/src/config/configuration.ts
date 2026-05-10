@@ -9,6 +9,13 @@ export interface AppConfig {
   attachments: { maxFilesPerComplaint: number; maxBytes: number };
   corsOrigins: string[];
   initialAdmin?: { username: string; password: string; displayName: string };
+  /**
+   * Base64-encoded 32-byte key for AES-256-GCM encryption of TOTP
+   * secrets. Optional — when unset, the 2FA endpoints respond with
+   * `TOTP_NOT_CONFIGURED` so the rest of the app keeps working until
+   * the operator generates a key and redeploys.
+   */
+  totpEncryptionKey?: string;
 }
 
 export const envSchema = Joi.object({
@@ -25,6 +32,10 @@ export const envSchema = Joi.object({
   INITIAL_ADMIN_USERNAME: Joi.string().optional(),
   INITIAL_ADMIN_PASSWORD: Joi.string().min(10).optional(),
   INITIAL_ADMIN_DISPLAY_NAME: Joi.string().optional(),
+  // 32 raw bytes → 44 chars in base64 with padding, 43 unpadded.
+  // Length validation here is a quick guard — exact length is enforced
+  // at cipher construction time (SecretCipher.create).
+  TOTP_ENCRYPTION_KEY: Joi.string().min(43).optional(),
 }).unknown(true);
 
 export function loadConfig(): AppConfig {
@@ -54,5 +65,6 @@ export function loadConfig(): AppConfig {
             displayName: env.INITIAL_ADMIN_DISPLAY_NAME ?? 'Administrator',
           }
         : undefined,
+    totpEncryptionKey: env.TOTP_ENCRYPTION_KEY,
   };
 }

@@ -7,6 +7,7 @@ import { envSchema, loadConfig } from './config/configuration';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './common/health.controller';
 
+import { AuthAuditModule } from './modules/auth-audit/auth-audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -39,6 +40,7 @@ import { DisplayNamesModule } from './modules/display-names/display-names.module
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     DatabaseModule,
+    AuthAuditModule,
     AuthModule,
     UsersModule,
     RolesModule,

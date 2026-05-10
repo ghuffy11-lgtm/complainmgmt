@@ -136,12 +136,22 @@ describe('RefreshTokenService', () => {
     await expect(svc.rotate(raw, {})).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it('revoke() flips revokedAt for the matching active row', async () => {
+  it('revoke() flips revokedAt for the matching active row and returns the userId', async () => {
     const { rows, tokenRepo, dataSource } = makeStubs();
     const svc = new RefreshTokenService(tokenRepo as never, dataSource as never, cfg);
     const raw = await svc.issue('42', {});
-    await svc.revoke(raw);
+    const userId = await svc.revoke(raw);
     expect(rows[0].revokedAt).toBeInstanceOf(Date);
+    expect(userId).toBe('42');
+  });
+
+  it('revoke() returns null for an unknown or already-revoked token', async () => {
+    const { rows, tokenRepo, dataSource } = makeStubs();
+    const svc = new RefreshTokenService(tokenRepo as never, dataSource as never, cfg);
+    expect(await svc.revoke('does-not-exist')).toBeNull();
+    const raw = await svc.issue('42', {});
+    rows[0].revokedAt = new Date();
+    expect(await svc.revoke(raw)).toBeNull();
   });
 
   it('revokeAllForUser flips every active row for the user', async () => {

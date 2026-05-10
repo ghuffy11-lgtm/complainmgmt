@@ -12,4 +12,8 @@ export type AuthUser = {
   departmentIds: string[];
   roleKeys: string[];
   permissions: Set<string>;     // "resource:action"
+  /** True if the user has TOTP enrolled (set by PermissionsService.materialize
+   *  from `users.totp_enrolled_at`). Drives the Profile UI's enroll-vs-disable
+   *  affordance. */
+  twoFactorEnrolled?: boolean;
 };

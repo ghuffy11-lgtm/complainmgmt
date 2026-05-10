@@ -1,11 +1,17 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { AppConfig } from '../../config/configuration';
 import { UserEntity } from './entities/user.entity';
-import { IAuthProvider, ProviderAuthResult } from './auth-provider.interface';
+import { AuthAuditService } from '../auth-audit/auth-audit.service';
+import { LockoutPolicy } from './lockout-policy.service';
+import {
+  AuthCallContext,
+  IAuthProvider,
+  ProviderAuthResult,
+} from './auth-provider.interface';
 
 /**
  * A pre-computed bcrypt hash of an arbitrary string. Used to keep timing
@@ -18,22 +24,28 @@ const DUMMY_HASH = '$2b$12$0123456789012345678901uPqXYZRleadingDummyHashAbcdEfgh
 @Injectable()
 export class LocalAuthProvider implements IAuthProvider {
   readonly key = 'local' as const;
-  private readonly maxFailures: number;
-  private readonly lockoutMinutes: number;
 
   constructor(
     @InjectRepository(UserEntity) private readonly users: Repository<UserEntity>,
     cfg: ConfigService,
+    @Optional() private readonly auditor?: AuthAuditService,
+    @Optional() private readonly lockoutPolicy?: LockoutPolicy,
   ) {
-    // TODO(roadmap): pull these from system_settings instead of hard-coding.
+    // Lockout thresholds now come from `system_settings` via
+    // LockoutPolicy (T-445); the old hardcoded constants used to live
+    // here. ConfigService is still injected because we may want
+    // app-level config later (e.g. an LDAP provider).
     void cfg.get<AppConfig>('app');
-    this.maxFailures = 5;
-    this.lockoutMinutes = 15;
   }
 
-  async authenticate(username: string, password: string): Promise<ProviderAuthResult> {
+  async authenticate(
+    username: string,
+    password: string,
+    ctx?: AuthCallContext,
+  ): Promise<ProviderAuthResult> {
     if (!username || !password) {
       await bcrypt.compare(password || ' ', DUMMY_HASH);
+      // No audit row when there's nothing to attribute it to.
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
 
@@ -41,6 +53,7 @@ export class LocalAuthProvider implements IAuthProvider {
 
     if (!user) {
       await bcrypt.compare(password, DUMMY_HASH);
+      await this.audit(username, null, 'login.unknown_user', ctx);
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
 
@@ -49,23 +62,30 @@ export class LocalAuthProvider implements IAuthProvider {
     // provider without conflating it with a wrong password.
     if (user.authProvider !== this.key) {
       await bcrypt.compare(password, DUMMY_HASH);
+      await this.audit(username, user.id, 'login.wrong_provider', ctx, {
+        provider: user.authProvider,
+      });
       throw new UnauthorizedException({ code: 'WRONG_PROVIDER' });
     }
 
     if (!user.isActive) {
       await bcrypt.compare(password, DUMMY_HASH);
+      await this.audit(username, user.id, 'login.inactive', ctx);
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       // Keep timing flat with the success branch.
       await bcrypt.compare(password, DUMMY_HASH);
+      await this.audit(username, user.id, 'login.account_locked', ctx, {
+        lockedUntil: user.lockedUntil.toISOString(),
+      });
       throw new ForbiddenException({ code: 'ACCOUNT_LOCKED', until: user.lockedUntil });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      await this.recordFailure(user);
+      await this.recordFailure(user, ctx);
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
 
@@ -73,6 +93,10 @@ export class LocalAuthProvider implements IAuthProvider {
       { id: user.id },
       { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
     );
+    // `login.success` is recorded by AuthService.login() once tokens have
+    // been issued, so the audit row reflects "got access" not "password
+    // verified". See auth.service.ts.
+
     // Return a fresh in-memory copy with the success-side fields applied so
     // callers don't see a stale lockedUntil/failedLoginCount on the same tick.
     return {
@@ -85,18 +109,47 @@ export class LocalAuthProvider implements IAuthProvider {
    * set lockedUntil and reset the count so the user gets a fresh attempt
    * budget after the lockout window.
    */
-  private async recordFailure(user: UserEntity): Promise<void> {
+  private async recordFailure(user: UserEntity, ctx?: AuthCallContext): Promise<void> {
+    const policy = this.lockoutPolicy
+      ? await this.lockoutPolicy.resolve()
+      : { maxFailures: 5, windowMinutes: 15 };
     const failed = user.failedLoginCount + 1;
-    if (failed >= this.maxFailures) {
-      await this.users.update(
-        { id: user.id },
-        {
-          failedLoginCount: 0,
-          lockedUntil: new Date(Date.now() + this.lockoutMinutes * 60_000),
-        },
-      );
+    if (failed >= policy.maxFailures) {
+      const lockedUntil = new Date(Date.now() + policy.windowMinutes * 60_000);
+      await this.users.update({ id: user.id }, { failedLoginCount: 0, lockedUntil });
+      await this.audit(user.username, user.id, 'login.password_failed', ctx, {
+        attempt: failed,
+        threshold: policy.maxFailures,
+      });
+      await this.audit(user.username, user.id, 'account.locked', ctx, {
+        lockedUntil: lockedUntil.toISOString(),
+        windowMinutes: policy.windowMinutes,
+        trigger: 'password',
+      });
     } else {
       await this.users.update({ id: user.id }, { failedLoginCount: failed });
+      await this.audit(user.username, user.id, 'login.password_failed', ctx, {
+        attempt: failed,
+        threshold: policy.maxFailures,
+      });
     }
+  }
+
+  private async audit(
+    username: string,
+    userId: string | null,
+    event: Parameters<AuthAuditService['record']>[0]['event'],
+    ctx: AuthCallContext | undefined,
+    detail?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.auditor) return;
+    await this.auditor.record({
+      username,
+      userId,
+      event,
+      ip: ctx?.ip ?? null,
+      userAgent: ctx?.userAgent ?? null,
+      detail: detail ?? null,
+    });
   }
 }

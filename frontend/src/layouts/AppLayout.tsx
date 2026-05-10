@@ -10,12 +10,15 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Shield,
   ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../store/auth-store';
 import { usePermissions } from '../hooks/usePermissions';
 import { useBranding } from '../hooks/useBranding';
 import { AuthService } from '../services/auth.service';
+import { TwoFactorService } from '../services/two-factor.service';
+import { TwoFactorEnrollDialog } from '../components/TwoFactorEnrollDialog';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
@@ -68,6 +71,32 @@ export function AppLayout() {
   const branding = useBranding();
   const nav = useNavigate();
   const [pwOpen, setPwOpen] = React.useState(false);
+  const [twoFaOpen, setTwoFaOpen] = React.useState<'enroll' | 'disable' | null>(null);
+  const [forceEnroll, setForceEnroll] = React.useState(false);
+  const setUser = useAuthStore((s) => s.setUser);
+
+  // Listen for the api-client's MUST_ENROLL_2FA signal. Triggered when a
+  // backend request comes back 412 — meaning an admin tried to do
+  // anything before enrolling. We pop the wizard and forbid dismissal
+  // until enrollment completes.
+  React.useEffect(() => {
+    const onForce = () => {
+      setForceEnroll(true);
+      setTwoFaOpen('enroll');
+    };
+    window.addEventListener('cts:must-enroll-2fa', onForce);
+    return () => window.removeEventListener('cts:must-enroll-2fa', onForce);
+  }, []);
+
+  // Proactively detect "I am admin and not enrolled" on every render so
+  // we don't have to wait for the user to click something that triggers
+  // a 412. /auth/me already reports `twoFactorEnrolled`.
+  React.useEffect(() => {
+    if (user?.roleKeys.includes('admin') && !user.twoFactorEnrolled) {
+      setForceEnroll(true);
+      setTwoFaOpen('enroll');
+    }
+  }, [user?.roleKeys, user?.twoFactorEnrolled]);
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -217,6 +246,14 @@ export function AppLayout() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Shield size={14} />}
+              onClick={() => setTwoFaOpen(user?.twoFactorEnrolled ? 'disable' : 'enroll')}
+            >
+              {user?.twoFactorEnrolled ? 'Two-factor: on' : 'Set up 2FA'}
+            </Button>
             <Button variant="ghost" size="sm" icon={<Key size={14} />} onClick={() => setPwOpen(true)}>
               Change password
             </Button>
@@ -241,7 +278,85 @@ export function AppLayout() {
       <Modal open={pwOpen} onClose={() => setPwOpen(false)} title="Change password" footer={null}>
         <ChangePasswordForm onClose={() => setPwOpen(false)} />
       </Modal>
+
+      {twoFaOpen === 'enroll' && (
+        <TwoFactorEnrollDialog
+          mandatory={forceEnroll}
+          onClose={() => {
+            // In mandatory mode the dialog refuses to close until
+            // enrollment is complete — calling onClose is a no-op so
+            // the user can't escape via Escape / overlay click / Cancel.
+            if (forceEnroll) return;
+            setTwoFaOpen(null);
+          }}
+          onEnrolled={async () => {
+            // Refresh /me so the header label flips to "Two-factor: on"
+            // and twoFactorEnrolled becomes true (clears forceEnroll).
+            try {
+              const me = await AuthService.me();
+              setUser(me);
+            } catch { /* ignore — header will refresh on next nav */ }
+            setForceEnroll(false);
+            setTwoFaOpen(null);
+          }}
+        />
+      )}
+      {twoFaOpen === 'disable' && (
+        <DisableTwoFactorForm onClose={() => setTwoFaOpen(null)} />
+      )}
     </div>
+  );
+}
+
+function DisableTwoFactorForm({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const clear = useAuthStore((s) => s.clear);
+  const nav = useNavigate();
+  const [pw, setPw] = React.useState('');
+  const m = useMutation({
+    mutationFn: () => TwoFactorService.disable(pw),
+    onSuccess: () => {
+      toast.success('Two-factor disabled — please sign in again');
+      clear();
+      nav('/login', { replace: true });
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Could not disable')),
+  });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Turn off two-factor authentication"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="danger"
+            onClick={() => m.mutate()}
+            disabled={pw.length === 0 || m.isPending}
+          >
+            {m.isPending ? 'Disabling…' : 'Disable 2FA'}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm m-0 mb-2">
+        Confirm your current password to turn off 2FA on your account. After this,
+        login will only require your password again.
+      </p>
+      <p className="muted text-xs m-0 mb-3">
+        All of your sessions will be signed out.
+      </p>
+      <div className="field">
+        <label>Current password</label>
+        <input
+          type="password"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          autoFocus
+        />
+      </div>
+    </Modal>
   );
 }
 

@@ -12,11 +12,20 @@ import { cn } from '../../lib/utils';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { Department, Role, UserSummary } from '../../types/api';
 
+function isLocked(u: UserSummary): boolean {
+  if (!u.lockedUntil) return false;
+  return new Date(u.lockedUntil).getTime() > Date.now();
+}
+
 export function AdminUsersPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const { has } = usePermissions();
   const canManage = has('admin.users:manage');
+  const canUnlock = has('user:unlock');
+  const canReset2fa = has('user:reset_2fa');
+  const [unlocking, setUnlocking] = useState<UserSummary | null>(null);
+  const [resetting2fa, setResetting2fa] = useState<UserSummary | null>(null);
 
   const usersQ = useQuery({ queryKey: ['users'], queryFn: () => UsersService.list(1, 200) });
   const rolesQ = useQuery({ queryKey: ['roles'], queryFn: () => RolesService.list() });
@@ -31,6 +40,30 @@ export function AdminUsersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
       toast.success('Updated');
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+
+  const unlockM = useMutation({
+    mutationFn: (u: UserSummary) => UsersService.unlock(u.id),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      toast.success(result.unlocked ? 'User unlocked' : 'User was already unlocked');
+      setUnlocking(null);
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+
+  const reset2faM = useMutation({
+    mutationFn: (u: UserSummary) => UsersService.resetTwoFactor(u.id),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      toast.success(
+        result.wasEnrolled
+          ? '2FA reset — the user will be prompted to re-enroll on next login.'
+          : 'User was not enrolled in 2FA; nothing changed.',
+      );
+      setResetting2fa(null);
     },
     onError: (err) => toast.error(errorMessage(err)),
   });
@@ -63,11 +96,28 @@ export function AdminUsersPage() {
                 <td>{u.displayName}</td>
                 <td className="mono muted">{u.email ?? '—'}</td>
                 <td>{deptName ?? <span className="muted">—</span>}</td>
-                <td>{u.isActive
-                  ? <span className="badge badge-success">active</span>
-                  : <span className="badge">inactive</span>}</td>
+                <td>
+                  {isLocked(u) ? (
+                    <span
+                      className="badge badge-warn"
+                      title={`Locked until ${new Date(u.lockedUntil!).toLocaleString()}`}
+                    >
+                      locked
+                    </span>
+                  ) : u.isActive ? (
+                    <span className="badge badge-success">active</span>
+                  ) : (
+                    <span className="badge">inactive</span>
+                  )}
+                </td>
                 <td className="mono muted">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</td>
                 <td className="right">
+                  {canUnlock && isLocked(u) && (
+                    <Button variant="ghost" onClick={() => setUnlocking(u)}>Unlock</Button>
+                  )}
+                  {canReset2fa && u.twoFactorEnrolled && (
+                    <Button variant="ghost" onClick={() => setResetting2fa(u)}>Reset 2FA</Button>
+                  )}
                   {canManage && (
                     <>
                       <Button variant="ghost" onClick={() => setEditing(u)}>Edit</Button>
@@ -114,6 +164,65 @@ export function AdminUsersPage() {
           onClose={() => setResetting(null)}
           onDone={() => setResetting(null)}
         />
+      )}
+      {resetting2fa && (
+        <Modal
+          open
+          onClose={() => setResetting2fa(null)}
+          title={`Reset 2FA — ${resetting2fa.username}`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setResetting2fa(null)}>Cancel</Button>
+              <Button
+                variant="danger"
+                onClick={() => reset2faM.mutate(resetting2fa)}
+                disabled={reset2faM.isPending}
+              >
+                {reset2faM.isPending ? 'Resetting…' : 'Reset 2FA'}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm m-0 mb-2">
+            This clears <strong>{resetting2fa.username}</strong>'s authenticator secret and all
+            backup codes. The user will be prompted to enroll again on their next login.
+          </p>
+          <p className="muted text-xs m-0">
+            Use this when the user has lost both their authenticator and their backup codes.
+            All of their sessions will be signed out. The action is recorded in the Login Activity
+            audit log under <span className="mono">2fa.reset_by_admin</span>.
+          </p>
+        </Modal>
+      )}
+      {unlocking && (
+        <Modal
+          open
+          onClose={() => setUnlocking(null)}
+          title={`Unlock ${unlocking.username}`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setUnlocking(null)}>Cancel</Button>
+              <Button onClick={() => unlockM.mutate(unlocking)} disabled={unlockM.isPending}>
+                {unlockM.isPending ? 'Unlocking…' : 'Unlock user'}
+              </Button>
+            </>
+          }
+        >
+          <p>
+            This will clear the failed-login counter and lift the lock on{' '}
+            <strong>{unlocking.username}</strong>. They can attempt to log in immediately.
+          </p>
+          {unlocking.lockedUntil && (
+            <p className="muted text-xs mt-2 m-0">
+              Currently locked until{' '}
+              <span className="mono">{new Date(unlocking.lockedUntil).toLocaleString()}</span>.
+            </p>
+          )}
+          <p className="muted text-xs mt-2 m-0">
+            The action is recorded in the Login Activity audit log under{' '}
+            <span className="mono">account.unlocked_by_admin</span>.
+          </p>
+        </Modal>
       )}
     </Card>
   );

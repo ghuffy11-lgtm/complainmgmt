@@ -17,13 +17,36 @@ All endpoints are prefixed with `/api`. JSON in, JSON out. Authenticated request
 
 | Method | Path | Body / Query | Returns |
 |---|---|---|---|
-| POST | `/auth/login` | `{username, password}` | `{accessToken, refreshToken, user}` |
+| POST | `/auth/login` | `{username, password}` | `{accessToken, refreshToken, user}` OR `{twoFactorRequired: true, challengeToken}` (see 2FA below) |
 | POST | `/auth/refresh` | `{refreshToken}` | `{accessToken, refreshToken}` (rotated) |
 | POST | `/auth/logout` | `{refreshToken}` | `204` |
-| GET  | `/auth/me` | — | current user + effective permissions + active department memberships |
+| GET  | `/auth/me` | — | current user + effective permissions + active department memberships + `twoFactorEnrolled` |
 | POST | `/auth/change-password` | `{currentPassword, newPassword}` | `204` |
+| POST | `/auth/2fa/setup` | — (auth required) | `{provisionalSecret, otpauthUrl, qrSvg}` — does not persist |
+| POST | `/auth/2fa/enable` | `{provisionalSecret, code}` | `{enrolled: true, backupCodes: [...10]}` — codes shown ONCE |
+| POST | `/auth/2fa/verify` | `{challengeToken, code}` (public) | `{accessToken, refreshToken, user}` (same shape as no-2FA login) |
+| POST | `/auth/2fa/disable` | `{currentPassword}` | `204` (force-logs-out all sessions) |
 
-Login is rate-limited (5/min/IP) and tracks `failed_login_count` per user; after N failures the user is temporarily locked.
+Login is rate-limited (5/min/IP). The lockout policy (max failures, window minutes) is read from `system_settings` keys `lockout.max_failed_logins` (default 5) and `lockout.duration_minutes` (default 15). Both password failures (`failed_login_count`) and 2FA-code failures (`failed_2fa_count`) feed the same `users.locked_until` field — once tripped, the user can't bypass via either route.
+
+### Two-factor authentication (TOTP)
+
+When a user has 2FA enrolled, `/auth/login` returns a 5-minute single-use challenge token instead of a session. The client posts that token to `/auth/2fa/verify` along with either a 6-digit TOTP from the user's authenticator app **or** a backup code. Backup codes are formatted `XXXXX-XXXXX` and dashes/spaces are tolerated; each is single-use.
+
+Server-side encryption: TOTP secrets are encrypted at rest with AES-256-GCM using a key from `TOTP_ENCRYPTION_KEY` (env var, base64-encoded 32 bytes). Without it, the 2FA endpoints respond with `503 TOTP_NOT_CONFIGURED`. Generate one with `openssl rand -base64 32`.
+
+Mandatory enforcement: users with the `admin` role cannot use the system without enrolling. Once their password is verified, every authenticated request is rejected with `412 MUST_ENROLL_2FA` until they finish enrollment. The frontend pops a forced-enrollment dialog in response.
+
+Error codes the frontend cares about:
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `2FA_CHALLENGE_INVALID` | 401 | Challenge token expired, malformed, or already consumed — restart login. |
+| `2FA_CODE_INVALID` | 401 | Wrong TOTP / backup code — try again. |
+| `2FA_NOT_CONFIGURED` | 503 | Server is missing `TOTP_ENCRYPTION_KEY`. |
+| `2FA_ALREADY_ENROLLED` | 409 | User tried to call `/setup` while already enrolled. |
+| `MUST_ENROLL_2FA` | 412 | Admin user must finish enrollment first. |
+| `ACCOUNT_LOCKED` | 403 | Lockout window in force; payload includes `until`. |
 
 The `user` payload (and `/auth/me` response) shape:
 
@@ -35,7 +58,8 @@ The `user` payload (and `/auth/me` response) shape:
   "departmentId": "3",            // primary / "home" department, may be null
   "departmentIds": ["3", "5"],    // every active department membership
   "roleKeys": ["supervisor"],
-  "permissions": ["complaint:read", "complaint:update", ...]
+  "permissions": ["complaint:read", "complaint:update", ...],
+  "twoFactorEnrolled": false      // true once the user completes 2FA enrollment
 }
 ```
 
@@ -58,6 +82,10 @@ The `user` payload (and `/auth/me` response) shape:
 | PATCH | `/users/:id` | `admin.users:manage` | Same body shape; omit `departmentIds` to leave memberships unchanged. |
 | POST | `/users/:id/roles` | `admin.users:manage` | `{roleIds:[…]}` replaces user's roles. Forces a re-login by revoking refresh tokens. |
 | POST | `/users/:id/reset-password` | `admin.users:manage` | sets a new password |
+| POST | `/users/:id/unlock` | `user:unlock` | clears `failed_login_count` + `locked_until`; idempotent. Audited as `account.unlocked_by_admin`. Returns `{unlocked: boolean}`. |
+| POST | `/users/:id/reset-2fa` | `user:reset_2fa` | clears the user's TOTP secret + backup codes, force-logs-out their sessions; idempotent. Audited as `2fa.reset_by_admin`. Returns `{wasEnrolled: boolean}`. |
+
+There is also a read-only **Login activity** endpoint at `GET /admin/auth-audit` (gated by `auth_audit:read`) that returns the auth-audit log with filters `username`, `ip`, `event`, `success=true|false`, `from`, `to`, `page`, `pageSize`. Each row carries a resolved `userDisplayName` so the UI doesn't have to N+1 lookup names.
 
 ## Roles & Permissions
 

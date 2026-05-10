@@ -44,6 +44,18 @@ api.interceptors.response.use(
       // Hard logout: bounce to /login
       if (typeof window !== 'undefined') window.location.href = '/login';
     }
+    // 412 MUST_ENROLL_2FA → admin needs to finish 2FA enrollment before
+    // any non-allow-list request will succeed. Surface a single client-side
+    // event so AppLayout can pop the enrollment dialog. Don't redirect
+    // hard — the user is already authenticated; we just need them to do
+    // one more thing.
+    if (
+      error.response?.status === 412 &&
+      typeof window !== 'undefined' &&
+      (error.response.data as { code?: string } | null)?.code === 'MUST_ENROLL_2FA'
+    ) {
+      window.dispatchEvent(new CustomEvent('cts:must-enroll-2fa'));
+    }
     return Promise.reject(error);
   },
 );

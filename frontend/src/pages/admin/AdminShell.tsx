@@ -28,6 +28,7 @@ export function AdminShell() {
         {has('admin.fields:manage') && <NavLink to="fields" className={tabClass}>Fields</NavLink>}
         {has('admin.settings:manage') && <NavLink to="settings" className={tabClass}>Settings</NavLink>}
         {has('audit:read') && <NavLink to="audit" className={tabClass}>Audit</NavLink>}
+        {has('auth_audit:read') && <NavLink to="login-activity" className={tabClass}>Login activity</NavLink>}
       </nav>
 
       <Outlet />

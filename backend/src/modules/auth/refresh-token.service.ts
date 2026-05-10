@@ -5,6 +5,7 @@ import { DataSource, Repository, IsNull, LessThanOrEqual } from 'typeorm';
 import * as crypto from 'node:crypto';
 import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { AppConfig } from '../../config/configuration';
+import { AuthCallContext } from './auth-provider.interface';
 
 @Injectable()
 export class RefreshTokenService {
@@ -27,7 +28,7 @@ export class RefreshTokenService {
   }
 
   /** Issue a fresh refresh token for `userId`. Returns the raw token (the only time it exists in plaintext). */
-  async issue(userId: string, ctx: { ip?: string; userAgent?: string }): Promise<string> {
+  async issue(userId: string, ctx: AuthCallContext): Promise<string> {
     const raw = this.mintRaw();
     await this.repo.insert({
       userId,
@@ -48,7 +49,7 @@ export class RefreshTokenService {
    * a conditional UPDATE so only one caller wins the revoke; the other gets
    * INVALID_REFRESH_TOKEN.
    */
-  async rotate(raw: string, ctx: { ip?: string; userAgent?: string }): Promise<{ userId: string; raw: string }> {
+  async rotate(raw: string, ctx: AuthCallContext): Promise<{ userId: string; raw: string }> {
     const tokenHash = this.hash(raw);
     return this.dataSource.transaction(async (em) => {
       const tokenRepo = em.getRepository(RefreshTokenEntity);
@@ -86,8 +87,23 @@ export class RefreshTokenService {
     });
   }
 
-  async revoke(raw: string): Promise<void> {
-    await this.repo.update({ tokenHash: this.hash(raw), revokedAt: IsNull() }, { revokedAt: new Date() });
+  /**
+   * Revoke `raw` if it's currently active. Returns the `userId` of the
+   * token that was revoked, or null if the token was unknown / already
+   * revoked. Callers can use the returned userId to attribute a `logout`
+   * audit row.
+   *
+   * The two-step (findOne → update with IsNull guard) is intentional:
+   * the IsNull filter on UPDATE makes the actual revoke atomic against
+   * concurrent callers (only one wins), while the findOne up front gives
+   * us the userId for the audit row even on the no-op path.
+   */
+  async revoke(raw: string): Promise<string | null> {
+    const tokenHash = this.hash(raw);
+    const row = await this.repo.findOne({ where: { tokenHash } });
+    if (!row || row.revokedAt) return null;
+    await this.repo.update({ tokenHash, revokedAt: IsNull() }, { revokedAt: new Date() });
+    return row.userId;
   }
 
   async revokeAllForUser(userId: string): Promise<void> {

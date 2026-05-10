@@ -11,6 +11,7 @@ import { AdminFieldsPage } from './pages/admin/AdminFieldsPage';
 import { AdminDepartmentsPage } from './pages/admin/AdminDepartmentsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 import { AdminAuditPage } from './pages/admin/AdminAuditPage';
+import { AdminLoginActivityPage } from './pages/admin/AdminLoginActivityPage';
 import { AppLayout } from './layouts/AppLayout';
 import { ProtectedRoute } from './routes/ProtectedRoute';
 
@@ -50,6 +51,7 @@ export function App() {
                 'admin.departments:manage',
                 'admin.settings:manage',
                 'audit:read',
+                'auth_audit:read',
               ]}
             >
               <AdminShell />
@@ -63,6 +65,7 @@ export function App() {
           <Route path="fields" element={<AdminFieldsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
           <Route path="audit" element={<AdminAuditPage />} />
+          <Route path="login-activity" element={<AdminLoginActivityPage />} />
         </Route>
       </Route>
 

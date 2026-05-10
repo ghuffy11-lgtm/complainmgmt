@@ -50,6 +50,7 @@ export class PermissionsService {
       departmentIds: deptRows.map((d) => String(d.department_id)),
       roleKeys: Array.from(roleKeys),
       permissions,
+      twoFactorEnrolled: !!user.totpEnrolledAt,
     };
   }
 

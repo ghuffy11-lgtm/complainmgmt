@@ -52,4 +52,17 @@ export const UsersService = {
   resetPassword(id: string, newPassword: string) {
     return api.post(`/users/${id}/reset-password`, { newPassword }).then(() => undefined);
   },
+  /** Clear failed-login counter + locked_until. Idempotent — `unlocked: false`
+   *  when there was nothing to clear. Requires `user:unlock` permission. */
+  unlock(id: string) {
+    return api.post<{ unlocked: boolean }>(`/users/${id}/unlock`, {}).then((r) => r.data);
+  },
+  /** Clear the user's TOTP secret + backup codes; force re-enrollment on
+   *  next login. Idempotent — `wasEnrolled: false` when the user wasn't
+   *  enrolled. Requires `user:reset_2fa` permission. */
+  resetTwoFactor(id: string) {
+    return api
+      .post<{ wasEnrolled: boolean }>(`/users/${id}/reset-2fa`, {})
+      .then((r) => r.data);
+  },
 };

@@ -266,3 +266,21 @@ Firewall — confirm port 443 is open inbound on the server (`sudo ufw status`, 
 Self-signed certs are flagged by every browser. Options:
 - **MDM-push the cert** to managed devices (Group Policy, Jamf, Intune…) so it shows as trusted. Cert files are in `/opt/complainmgmt/nginx/certs/fullchain.pem`.
 - **Switch to Let's Encrypt** when the server has a real DNS name (free certs, auto-renew with `certbot`).
+
+## Break-glass: unlocking a user when no admin can log in
+
+Lockout is a security feature: 5 wrong passwords in a short window → 15-minute lock. The everyday recovery path is **Admin → Users → "Unlock"** in the app. That writes an audited `account.unlocked_by_admin` row to `auth_audit_log`.
+
+If the locked-out user is the only admin (or the in-app path is otherwise unreachable), use the break-glass script. It runs against the DB directly so no admin login is required:
+
+```bash
+cd /opt/complainmgmt
+./scripts/unlock-user.sh <username>
+```
+
+The script:
+- prints the row state before and after the change;
+- only touches `failed_login_count` and `locked_until` — never the password or any other field;
+- exits non-zero with a clear message if the username doesn't exist.
+
+Limitation: because it bypasses the API, the action is **not** captured in `auth_audit_log`. That's the cost of working when the API is unreachable. Prefer the in-app button when both options are available.

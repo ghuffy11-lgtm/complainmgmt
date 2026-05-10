@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto, ResetPasswordDto, SetUserRolesDto, UpdateUserDto } from './dto/create-user.dto';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -68,6 +69,37 @@ export class UsersController {
     await this.users.resetPassword(id, dto);
   }
 
+  @Post(':id/unlock')
+  @RequirePermissions('user:unlock')
+  @HttpCode(200)
+  async unlock(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthUser,
+    @Req() req: Request,
+  ): Promise<{ unlocked: boolean }> {
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    const result = await this.users.unlock(id, String(actor.id), {
+      ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return { unlocked: result.unlocked };
+  }
+
+  @Post(':id/reset-2fa')
+  @RequirePermissions('user:reset_2fa')
+  @HttpCode(200)
+  async resetTwoFactor(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthUser,
+    @Req() req: Request,
+  ): Promise<{ wasEnrolled: boolean }> {
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    return this.users.resetTwoFactor(id, String(actor.id), {
+      ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
   private toDto = (
     u: import('../auth/entities/user.entity').UserEntity,
     departmentIds: string[],
@@ -81,6 +113,9 @@ export class UsersController {
     departmentId: u.departmentId,
     departmentIds,
     lastLoginAt: u.lastLoginAt,
+    lockedUntil: u.lockedUntil,
+    failedLoginCount: u.failedLoginCount,
+    twoFactorEnrolled: !!u.totpEnrolledAt,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   });

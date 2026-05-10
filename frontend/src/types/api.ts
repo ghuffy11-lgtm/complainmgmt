@@ -8,9 +8,17 @@ export type Me = {
   departmentIds: string[];
   roleKeys: string[];
   permissions: string[];
+  /** True when the user has TOTP enrolled. Drives the Profile UI. */
+  twoFactorEnrolled?: boolean;
 };
 
-export type LoginResponse = {
+/** Backend may return either a session OR a 2FA challenge. The login
+ *  page decides which screen to show by inspecting the discriminator. */
+export type LoginResponse =
+  | LoginSessionResponse
+  | { twoFactorRequired: true; challengeToken: string };
+
+export type LoginSessionResponse = {
   accessToken: string;
   refreshToken: string;
   user: Me;
@@ -129,6 +137,12 @@ export type UserSummary = {
   /** All active department memberships. */
   departmentIds: string[];
   lastLoginAt: string | null;
+  /** Lockout state — null when not locked. */
+  lockedUntil: string | null;
+  /** Running counter of consecutive password failures since last success. */
+  failedLoginCount: number;
+  /** True when the user has TOTP enrolled. Drives the Reset 2FA action. */
+  twoFactorEnrolled: boolean;
   createdAt: string;
   updatedAt: string;
 };

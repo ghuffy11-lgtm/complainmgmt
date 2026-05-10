@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,9 @@ import { UserDepartmentEntity } from '../auth/entities/user-department.entity';
 import { DepartmentEntity } from '../departments/entities/department.entity';
 import { PermissionsService } from '../permissions/permissions.service';
 import { RefreshTokenService } from '../auth/refresh-token.service';
+import { TwoFactorService } from '../auth/two-factor.service';
+import { AuthAuditService } from '../auth-audit/auth-audit.service';
+import { AuthCallContext } from '../auth/auth-provider.interface';
 import { CreateUserDto, ResetPasswordDto, UpdateUserDto } from './dto/create-user.dto';
 import { AppConfig } from '../../config/configuration';
 
@@ -30,6 +34,8 @@ export class UsersService {
     private readonly refreshTokens: RefreshTokenService,
     private readonly dataSource: DataSource,
     cfg: ConfigService,
+    @Optional() private readonly auditor?: AuthAuditService,
+    @Optional() private readonly twoFactor?: TwoFactorService,
   ) {
     this.bcryptRounds = cfg.get<AppConfig>('app')!.bcryptRounds;
   }
@@ -261,5 +267,86 @@ export class UsersService {
     const newHash = await bcrypt.hash(dto.newPassword, this.bcryptRounds);
     await this.users.update({ id: user.id }, { passwordHash: newHash });
     await this.refreshTokens.revokeAllForUser(user.id);
+  }
+
+  /**
+   * Clear a user's failed-login counter and lock-until timestamp. Idempotent
+   * — if the user is not currently locked and has zero failures, returns
+   * `{ unlocked: false }` without writing an audit row, so a curious admin
+   * clicking the button on a healthy account doesn't generate noise.
+   *
+   * Always emits `account.unlocked_by_admin` when there was something to
+   * clear, with the previous lock state captured in `detail` for the
+   * Login Activity drill-down.
+   */
+  async unlock(
+    id: string,
+    actorId: string | null,
+    ctx: AuthCallContext = {},
+  ): Promise<{ unlocked: boolean; lockedUntil: Date | null; failedLoginCount: number }> {
+    const user = await this.findById(id);
+    const wasLocked = !!user.lockedUntil || user.failedLoginCount > 0;
+    if (!wasLocked) {
+      return { unlocked: false, lockedUntil: null, failedLoginCount: 0 };
+    }
+
+    const previousLockedUntil = user.lockedUntil;
+    const previousFailedCount = user.failedLoginCount;
+    await this.users.update(
+      { id: user.id },
+      { failedLoginCount: 0, lockedUntil: null },
+    );
+
+    await this.auditor?.record({
+      username: user.username,
+      userId: user.id,
+      event: 'account.unlocked_by_admin',
+      ip: ctx.ip ?? null,
+      userAgent: ctx.userAgent ?? null,
+      detail: {
+        actorId,
+        previousLockedUntil: previousLockedUntil ? previousLockedUntil.toISOString() : null,
+        previousFailedLoginCount: previousFailedCount,
+      },
+    });
+
+    return { unlocked: true, lockedUntil: null, failedLoginCount: 0 };
+  }
+
+  /**
+   * Admin-initiated 2FA reset. Clears the target user's TOTP secret +
+   * all backup codes, force-revokes their refresh tokens (so any open
+   * sessions get bounced to the login page), and audits the action
+   * with the actor's id in `detail`.
+   *
+   * Idempotent — calling on a user who never enrolled returns
+   * `{ wasEnrolled: false }` and writes no audit row, so a curious
+   * admin clicking the button on the wrong user doesn't generate noise.
+   */
+  async resetTwoFactor(
+    id: string,
+    actorId: string | null,
+    ctx: AuthCallContext = {},
+  ): Promise<{ wasEnrolled: boolean }> {
+    const user = await this.findById(id);
+    if (!user.totpEnrolledAt) {
+      return { wasEnrolled: false };
+    }
+    if (!this.twoFactor) {
+      // Should never happen — TwoFactorService is in the global AuthModule
+      // and unused only in tests. Fail loud rather than silently.
+      throw new Error('TwoFactorService not available');
+    }
+    await this.twoFactor.clear(user.id);
+    await this.refreshTokens.revokeAllForUser(user.id);
+    await this.auditor?.record({
+      username: user.username,
+      userId: user.id,
+      event: '2fa.reset_by_admin',
+      ip: ctx.ip ?? null,
+      userAgent: ctx.userAgent ?? null,
+      detail: { actorId },
+    });
+    return { wasEnrolled: true };
   }
 }

@@ -41,8 +41,8 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(204)
-  async logout(@Body() dto: RefreshDto): Promise<void> {
-    await this.auth.logout(dto.refreshToken);
+  async logout(@Body() dto: RefreshDto, @Req() req: Request): Promise<void> {
+    await this.auth.logout(dto.refreshToken, AuthController.ctx(req));
   }
 
   @Get('me')
@@ -55,7 +55,8 @@ export class AuthController {
   async changePassword(
     @CurrentUser() user: AuthUser,
     @Body() dto: ChangePasswordDto,
+    @Req() req: Request,
   ): Promise<void> {
-    await this.auth.changePassword(String(user.id), dto);
+    await this.auth.changePassword(String(user.id), dto, AuthController.ctx(req));
   }
 }

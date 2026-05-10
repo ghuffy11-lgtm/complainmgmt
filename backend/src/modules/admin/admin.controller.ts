@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Patch } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IsObject } from 'class-validator';
@@ -6,6 +6,7 @@ import { SystemSettingEntity } from './system-settings.entity';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user.type';
+import { LockoutPolicy } from '../auth/lockout-policy.service';
 
 class UpdateSettingsDto {
   @IsObject()
@@ -14,7 +15,10 @@ class UpdateSettingsDto {
 
 @Controller('admin/settings')
 export class AdminSettingsController {
-  constructor(@InjectRepository(SystemSettingEntity) private readonly repo: Repository<SystemSettingEntity>) {}
+  constructor(
+    @InjectRepository(SystemSettingEntity) private readonly repo: Repository<SystemSettingEntity>,
+    @Optional() private readonly lockoutPolicy?: LockoutPolicy,
+  ) {}
 
   @Get()
   @RequirePermissions('admin.settings:manage')
@@ -26,13 +30,20 @@ export class AdminSettingsController {
   @Patch()
   @RequirePermissions('admin.settings:manage')
   async update(@Body() dto: UpdateSettingsDto, @CurrentUser() actor: AuthUser) {
+    let lockoutTouched = false;
     for (const [key, value] of Object.entries(dto.values)) {
       const row = (await this.repo.findOne({ where: { key } })) ?? this.repo.create({ key });
       row.value = value;
       row.updatedBy = String(actor.id);
       await this.repo.save(row);
+      if (key === 'lockout.max_failed_logins' || key === 'lockout.duration_minutes') {
+        lockoutTouched = true;
+      }
       // TODO(T-081): emit AuditService.recordChange action='settings_changed' with field_key=key.
     }
+    // Make new lockout thresholds take effect on the very next login,
+    // not after the 30-second cache TTL.
+    if (lockoutTouched) this.lockoutPolicy?.invalidate();
     return { ok: true };
   }
 }

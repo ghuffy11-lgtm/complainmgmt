@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { IAuthProvider, ProviderAuthResult } from './auth-provider.interface';
+import { AuthCallContext, IAuthProvider, ProviderAuthResult } from './auth-provider.interface';
 import { LocalAuthProvider } from './local-auth.provider';
 
 /**
@@ -44,10 +44,14 @@ export class AuthProviderRegistry {
    * If none accept, throw a generic INVALID_CREDENTIALS — never reveal which
    * provider rejected the attempt.
    */
-  async tryAuthenticate(username: string, password: string): Promise<ProviderAuthResult> {
+  async tryAuthenticate(
+    username: string,
+    password: string,
+    ctx?: AuthCallContext,
+  ): Promise<ProviderAuthResult> {
     for (const p of this.ordered) {
       try {
-        return await p.authenticate(username, password);
+        return await p.authenticate(username, password, ctx);
       } catch (err) {
         // Re-throw "hard" errors (e.g. account locked) so the caller can show
         // the right message; only swallow "this isn't my user" rejections.

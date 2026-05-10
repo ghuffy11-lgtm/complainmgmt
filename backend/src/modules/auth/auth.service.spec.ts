@@ -56,12 +56,21 @@ describe('AuthService', () => {
   const refresh = {
     issue: jest.fn(async () => 'refresh-token-raw'),
     rotate: jest.fn(async () => ({ userId: '1', raw: 'refresh-token-raw-2' })),
-    revoke: jest.fn(async () => undefined),
+    revoke: jest.fn(async () => '1'),
     revokeAllForUser: jest.fn(async () => undefined),
   } as unknown as RefreshTokenService;
   const perms = { materialize: jest.fn(async () => makeAuthUser()) } as unknown as PermissionsService;
+  const auditor = { record: jest.fn(async () => undefined) };
 
-  const svc = new AuthService(registry, jwt, refresh, perms, usersRepo as never, cfg);
+  const svc = new AuthService(
+    registry,
+    jwt,
+    refresh,
+    perms,
+    usersRepo as never,
+    cfg,
+    auditor as never,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -69,10 +78,14 @@ describe('AuthService', () => {
     it('routes through the registry, mints both tokens, returns me-shape', async () => {
       (registry.tryAuthenticate as jest.Mock).mockResolvedValueOnce({ user: makeUser() });
       const r = await svc.login({ username: 'alice', password: 'pw' }, { ip: '1.2.3.4' });
-      expect(registry.tryAuthenticate).toHaveBeenCalledWith('alice', 'pw');
+      expect(registry.tryAuthenticate).toHaveBeenCalledWith('alice', 'pw', { ip: '1.2.3.4' });
+      if ('twoFactorRequired' in r) throw new Error('expected session, got 2FA challenge');
       expect(r.accessToken).toBe('jwt.signed.token');
       expect(r.refreshToken).toBe('refresh-token-raw');
       expect(r.user.permissions).toEqual(['complaint:read']);
+      expect(auditor.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'login.success', username: 'alice', ip: '1.2.3.4' }),
+      );
     });
 
     it('propagates registry errors', async () => {
@@ -99,9 +112,19 @@ describe('AuthService', () => {
   });
 
   describe('logout', () => {
-    it('revokes the supplied refresh token', async () => {
-      await svc.logout('raw');
+    it('revokes the supplied refresh token and audits when the token was active', async () => {
+      (usersRepo.findOne as jest.Mock).mockResolvedValueOnce(makeUser());
+      await svc.logout('raw', { ip: '5.6.7.8' });
       expect(refresh.revoke).toHaveBeenCalledWith('raw');
+      expect(auditor.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'logout', username: 'alice', ip: '5.6.7.8' }),
+      );
+    });
+
+    it('does not audit when the refresh token was already revoked / unknown', async () => {
+      (refresh.revoke as jest.Mock).mockResolvedValueOnce(null);
+      await svc.logout('raw', {});
+      expect(auditor.record).not.toHaveBeenCalled();
     });
   });
 
@@ -125,12 +148,19 @@ describe('AuthService', () => {
   });
 
   describe('changePassword', () => {
-    it('rotates the hash and force-logs-out every session', async () => {
+    it('rotates the hash, force-logs-out every session, and audits password_changed', async () => {
       const hash = await bcrypt.hash('current-pass-1', 4);
       (usersRepo.findOne as jest.Mock).mockResolvedValueOnce(makeUser({ passwordHash: hash }));
-      await svc.changePassword('1', { currentPassword: 'current-pass-1', newPassword: 'next-pass-1234' });
+      await svc.changePassword(
+        '1',
+        { currentPassword: 'current-pass-1', newPassword: 'next-pass-1234' },
+        { ip: '9.9.9.9' },
+      );
       expect(usersRepo.update).toHaveBeenCalled();
       expect(refresh.revokeAllForUser).toHaveBeenCalledWith('1');
+      expect(auditor.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'password_changed', username: 'alice', ip: '9.9.9.9' }),
+      );
     });
 
     it('rejects when the current password is wrong', async () => {
