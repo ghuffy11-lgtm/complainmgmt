@@ -25,13 +25,45 @@ Backend logs are JSON (Pino). Pipe through `jq` or `pino-pretty` locally for hum
 
 ## Backup
 
-Daily automated dump (set up as cron in step 8 of the runbook):
+`scripts/backup.sh` produces a gzipped `pg_dump` of the running CTS database via `docker compose exec`. It accepts three env vars:
 
-```bash
-BACKUP_DIR=/var/backups/cts /opt/complainmgmt/scripts/backup.sh
+| Var | Purpose | Default |
+|---|---|---|
+| `BACKUP_DIR` | Where to write the local copy | `./backups/` |
+| `RETAIN_DAYS` | Local retention (older files deleted) | `30` |
+| `MIRROR_DIR` | Optional off-host copy of every new file (NFS / SMB mount, second disk, etc.) | unset |
+| `MIRROR_RETAIN_DAYS` | Retention applied to the mirror separately | falls back to `RETAIN_DAYS` |
+
+A backup on the same disk doesn't survive a disk failure — set `MIRROR_DIR` to a path on a mounted off-host share so every nightly dump lands somewhere a host failure can't touch. The mirror is best-effort: if the share is unreachable at run time, the local backup still happens and the cron log records the mirror failure.
+
+### Production setup (Hadi Clinic deployment)
+
+The live `cts.hadiclinic.com.kw` host runs nightly via root's crontab — root rather than the `claude` ops user because the NAS share at `10.1.27.220:/volume1/LXBackup` does Unix-permission auth (NFSv3, `sec=sys`) and `claude`'s UID has no matching identity on the Synology side; root writes work without remapping.
+
+Mount (already in `/etc/fstab` on the prod host):
+
+```fstab
+10.1.27.220:/volume1/LXBackup  /mnt/lxbackup  nfs  defaults,_netdev,nofail,bg,vers=3  0  0
 ```
 
-Defaults: 14-day retention. Adjust inside `scripts/backup.sh`. **Important**: copy the dumps off the server periodically — a backup on the same disk doesn't survive a disk failure. Common patterns: `rsync` to a NAS, `aws s3 sync`, a scheduled `scp` to a second host.
+`_netdev,nofail,bg` keeps the host from blocking on boot if the NAS is down; `vers=3` because Synology DSM here doesn't support v4. Confirm reachability with `showmount -e 10.1.27.220` — the export should list `/volume1/LXBackup` to this host's IP.
+
+Root crontab on prod:
+
+```cron
+# CTS daily backup — local + mirror to NFS share at 10.1.27.220:/volume1/LXBackup
+# Local retention 14 days, share retention 90 days. Logs to /var/log/cts-backup.log.
+0 2 * * * cd /opt/complainmgmt && BACKUP_DIR=/var/lib/docker/cts-backups MIRROR_DIR=/mnt/lxbackup/cts RETAIN_DAYS=14 MIRROR_RETAIN_DAYS=90 /opt/complainmgmt/scripts/backup.sh >> /var/log/cts-backup.log 2>&1
+```
+
+Confirm the previous night's run:
+
+```bash
+sudo tail -20 /var/log/cts-backup.log
+sudo ls -la /mnt/lxbackup/cts/ | tail -5
+```
+
+Each line in the log starts with `→` for steps, `✓` for success, `✗` for problems. The log appends forever — rotate with logrotate if it ever bothers you (it grows ~1 KB/day).
 
 ### Verifying backups
 
