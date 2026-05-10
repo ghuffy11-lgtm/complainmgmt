@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { DataSource, LessThan, Repository } from 'typeorm';
 import { AuthAuditLogEntity } from './entities/auth-audit-log.entity';
 import { SystemSettingEntity } from '../admin/system-settings.entity';
 
@@ -34,6 +34,7 @@ export class AuthAuditRetentionService {
     private readonly audit: Repository<AuthAuditLogEntity>,
     @InjectRepository(SystemSettingEntity)
     private readonly settings: Repository<SystemSettingEntity>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** 03:00 UTC nightly. */
@@ -50,8 +51,16 @@ export class AuthAuditRetentionService {
     if (days === null) return { skipped: 'unset' };
     if (days <= 0) return { skipped: 'disabled' };
     const cutoff = new Date(Date.now() - days * 86_400_000);
-    const result = await this.audit.delete({ occurredAt: LessThan(cutoff) });
-    const deleted = result.affected ?? 0;
+    // The append-only BEFORE DELETE trigger from migration 0022 (loosened
+    // in 0029) raises 'auth_audit_log is append-only' unless the caller
+    // sets `app.allow_audit_delete = 'true'` for the current transaction.
+    // SET LOCAL keeps the flag scoped — it never leaks across
+    // connections or to subsequent transactions on the same connection.
+    const deleted = await this.dataSource.transaction(async (em) => {
+      await em.query("SET LOCAL app.allow_audit_delete = 'true'");
+      const result = await em.delete(AuthAuditLogEntity, { occurredAt: LessThan(cutoff) });
+      return result.affected ?? 0;
+    });
     if (deleted > 0) {
       this.log.log(
         { deleted, retentionDays: days, cutoff: cutoff.toISOString() },

@@ -271,6 +271,8 @@ Triggered by an admin-account lockout that needed raw SQL to recover. Batches sh
 
 - [DONE]   T-460 — Backend Dockerfile uses lockfile + `npm ci` (E17, E12)
   *The Dockerfile previously copied only `package.json` and ran `npm install`, so each build resolved deps fresh — every rebuild was a coin flip on the prebuild CDN for native modules like bcrypt. One such flake bricked a Batch A polish rebuild. Now copies `package-lock.json` too and uses `npm ci` in both build and runtime stages. Backend lockfile regenerated to include `@nestjs/schedule` + transitives.*
+- [DONE]   T-461 — Auth-audit retention can actually delete (E17)
+  *Caught after seeding 12 tripwire-verification rows that the original `BEFORE DELETE` trigger from `0022` made un-deletable. Same wall the retention cron from T-406 would hit on its first non-empty run. Migration `0029_auth_audit_allow_retention_delete.sql` rewrites `block_auth_audit_modification()` to additionally permit DELETE when the caller has set `app.allow_audit_delete = 'true'` for the current transaction. `AuthAuditRetentionService` now wraps its DELETE in a transaction with `SET LOCAL app.allow_audit_delete = 'true'` — the flag is transaction-scoped, never leaks. Three properties verified end-to-end: unflagged DELETE still raises, flagged DELETE works (removed the 12 verify rows + a leak-check row), flag does NOT leak across transactions. Defence still has two layers — the trigger blocks accidental `repo.delete()` calls in unrelated code, plus the prod privilege split where the app role doesn't have DELETE on the audit table at all.*
 
 ### Batch B — Unlock-user tooling (break-glass + admin button)
 
