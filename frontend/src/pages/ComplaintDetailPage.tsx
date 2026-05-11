@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock, RotateCcw, Save, UserPlus } from 'lucide-react';
+import { ArrowLeft, Lock, Printer, RotateCcw, Save, UserPlus } from 'lucide-react';
 import { ComplaintsService } from '../services/complaints.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { DepartmentsService } from '../services/departments.service';
@@ -16,6 +16,7 @@ import { DateInput } from '../components/ui/DateInput';
 import { Select } from '../components/ui/Select';
 import { errorMessage, useToast } from '../components/ui/Toast';
 import { usePermissions } from '../hooks/usePermissions';
+import { useBranding } from '../hooks/useBranding';
 import { titleize } from '../lib/utils';
 import { PriorityBadge, StatusBadge } from './ComplaintsListPage';
 import type { ComplaintPriority, ComplaintStatus } from '../types/api';
@@ -29,6 +30,7 @@ export function ComplaintDetailPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const { has, user } = usePermissions();
+  const branding = useBranding();
 
   const complaintQ = useQuery({
     queryKey: ['complaint', id],
@@ -149,17 +151,37 @@ export function ComplaintDetailPage() {
 
   return (
     <section className="space-y-6">
+      {/* Print-only letterhead: org branding + reference no. The on-screen
+          header below is hidden in print mode so the navigation buttons
+          don't leak onto paper. */}
+      <div className="print-only print-letterhead">
+        {branding.logoUrl && <img src={branding.logoUrl} alt="" />}
+        <div className="print-titles">
+          <div className="print-org">{branding.organizationName}</div>
+          <div className="print-sys">{branding.systemName}</div>
+        </div>
+        <div className="ml-auto text-right">
+          <div className="text-base font-bold text-black">{c.referenceNo}</div>
+          <div className="text-[11px] text-[#555]">
+            Status: {titleize(c.status)} · Priority: {titleize(c.priority)}
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => nav('/complaints')} className="px-2">
+          <Button variant="ghost" size="sm" onClick={() => nav('/complaints')} className="no-print px-2">
             <ArrowLeft size={18} />
           </Button>
           <h1 className="text-xl font-bold tracking-tight text-text-main m-0">{c.referenceNo}</h1>
           <StatusBadge status={c.status} />
           <PriorityBadge priority={c.priority} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="no-print flex items-center gap-2">
+          <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={() => window.print()}>
+            Print
+          </Button>
           {canAssign && (
             <Button variant="secondary" size="sm" icon={<UserPlus size={14} />} onClick={() => setAssignOpen(true)}>
               Assign
@@ -197,7 +219,7 @@ export function ComplaintDetailPage() {
             title="Fields"
             headerAction={
               canEdit && dirty ? (
-                <div className="flex items-center gap-2">
+                <div className="no-print flex items-center gap-2">
                   <Button variant="ghost" size="sm" disabled={!dirty} onClick={() => setDraft({ ...c.values })}>
                     Discard
                   </Button>
@@ -233,9 +255,11 @@ export function ComplaintDetailPage() {
             })}
           </Card>
 
-          <AttachmentsPanel complaintId={id} />
+          <div className="no-print">
+            <AttachmentsPanel complaintId={id} />
+          </div>
 
-          <Card title="Activity" subtitle="Journal of all changes and actions">
+          <Card className="no-print" title="Activity" subtitle="Journal of all changes and actions">
             <AuditTimeline
               entries={auditQ.data?.data ?? []}
               loading={auditQ.isLoading}
@@ -299,7 +323,7 @@ export function ComplaintDetailPage() {
             </div>
           </Card>
 
-          <Card title="Assignment history">
+          <Card className="no-print" title="Assignment history">
             {historyQ.isLoading && <p className="text-text-muted text-sm">Loading…</p>}
             {historyQ.data && historyQ.data.length === 0 && (
               <p className="text-text-muted text-sm">No assignments yet.</p>

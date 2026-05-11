@@ -16,10 +16,13 @@ import {
 } from 'recharts';
 import { DashboardService } from '../services/dashboard.service';
 import { DepartmentsService } from '../services/departments.service';
+import type { Branding } from '../services/branding.service';
 import { usePermissions } from '../hooks/usePermissions';
 import { useBranding } from '../hooks/useBranding';
+import { Printer } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { cn, titleize } from '../lib/utils';
 
@@ -90,7 +93,8 @@ export function DashboardPage() {
 // ─── Full / manager dashboard ───────────────────────────────────────────
 
 function ManagerDashboard() {
-  const primary = useBranding().primaryColor;
+  const branding = useBranding();
+  const primary = branding.primaryColor;
   const STATUS_COLORS = buildStatusColors(primary);
   const PRIORITY_COLORS = buildPriorityColors(primary);
 
@@ -148,8 +152,18 @@ function ManagerDashboard() {
   const trendSeries = useTrendSeries(trendQ.data?.data, window);
   const trendTotal = trendSeries.reduce((s, p) => s + p.count, 0);
 
+  const scopeText = departmentId
+    ? `${deptName(departmentId)} only`
+    : 'All departments';
+
   return (
     <section className="space-y-6">
+      <PrintLetterhead
+        branding={branding}
+        title="Dashboard"
+        meta={`${scopeText} · ${windowLabel}`}
+      />
+
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-text-main m-0">Dashboard</h1>
@@ -159,11 +173,16 @@ function ManagerDashboard() {
               : 'System-wide overview across all departments'}
           </p>
         </div>
-        <DepartmentScopePicker
-          departments={departmentsQ.data ?? []}
-          value={departmentId}
-          onChange={setDepartmentId}
-        />
+        <div className="no-print flex items-center gap-2">
+          <DepartmentScopePicker
+            departments={departmentsQ.data ?? []}
+            value={departmentId}
+            onChange={setDepartmentId}
+          />
+          <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={() => globalThis.print()}>
+            Print
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -181,7 +200,7 @@ function ManagerDashboard() {
       <Card
         title="Complaint volume"
         subtitle="by complaint date · zero-filled"
-        headerAction={<WindowPicker window={window} onChange={setWindow} />}
+        headerAction={<div className="no-print"><WindowPicker window={window} onChange={setWindow} /></div>}
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
         {!trendQ.isLoading && trendTotal === 0 && <NoTrendData label={windowLabel} />}
@@ -297,7 +316,8 @@ function complaintsLink(opts: {
 
 function UserDashboard() {
   const { user } = usePermissions();
-  const primary = useBranding().primaryColor;
+  const branding = useBranding();
+  const primary = branding.primaryColor;
   const STATUS_COLORS = buildStatusColors(primary);
   const PRIORITY_COLORS = buildPriorityColors(primary);
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
@@ -371,6 +391,12 @@ function UserDashboard() {
 
   return (
     <section className="space-y-6">
+      <PrintLetterhead
+        branding={branding}
+        title="Dashboard"
+        meta={`${scopeLabel} · ${windowLabel}`}
+      />
+
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -383,13 +409,18 @@ function UserDashboard() {
               : 'Showing complaints assigned to your departments.'}
           </p>
         </div>
-        {showDeptPicker && (
-          <DepartmentScopePicker
-            departments={myDeptOptions}
-            value={departmentId}
-            onChange={setDepartmentId}
-          />
-        )}
+        <div className="no-print flex items-center gap-2">
+          {showDeptPicker && (
+            <DepartmentScopePicker
+              departments={myDeptOptions}
+              value={departmentId}
+              onChange={setDepartmentId}
+            />
+          )}
+          <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={() => globalThis.print()}>
+            Print
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -400,7 +431,7 @@ function UserDashboard() {
 
       <Card
         title="Volume in your department"
-        headerAction={<WindowPicker window={window} onChange={setWindow} />}
+        headerAction={<div className="no-print"><WindowPicker window={window} onChange={setWindow} /></div>}
       >
         {trendQ.isLoading && <p className="muted">Loading…</p>}
         {!trendQ.isLoading && trendTotal === 0 && <NoTrendData label={windowLabel} />}
@@ -856,6 +887,32 @@ function BarPanel({
         </>
       )}
     </Card>
+  );
+}
+
+/** Print-only letterhead. Hidden on screen by the global .print-only rule
+ *  in styles.css; @media print reveals it as a flex header strip. */
+function PrintLetterhead({
+  branding,
+  title,
+  meta,
+}: {
+  branding: Branding;
+  title: string;
+  meta?: string;
+}) {
+  return (
+    <div className="print-only print-letterhead">
+      {branding.logoUrl && <img src={branding.logoUrl} alt="" />}
+      <div className="print-titles">
+        <div className="print-org">{branding.organizationName}</div>
+        <div className="print-sys">{branding.systemName}</div>
+      </div>
+      <div className="ml-auto text-right">
+        <div className="text-base font-bold text-black">{title}</div>
+        {meta && <div className="text-[11px] text-[#555]">{meta}</div>}
+      </div>
+    </div>
   );
 }
 

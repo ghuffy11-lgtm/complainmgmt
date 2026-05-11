@@ -84,13 +84,13 @@ export function AttachmentsPanel({ complaintId }: Props) {
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Attachments</h3>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted no-print" style={{ marginTop: 0 }}>
         Up to {MAX_FILES} files · max 2 MB each · {ALLOWED_MIME_LABEL}.
       </p>
 
       {canUpload && (
         <div
-          className={`dropzone ${over ? 'over' : ''}`}
+          className={`dropzone no-print ${over ? 'over' : ''}`}
           onClick={() => fileRef.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
@@ -116,7 +116,7 @@ export function AttachmentsPanel({ complaintId }: Props) {
       {listQ.data && listQ.data.length > 0 && (
         <table style={{ marginTop: 12 }}>
           <thead>
-            <tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr>
+            <tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th className="no-print"></th></tr>
           </thead>
           <tbody>
             {listQ.data.map((a) => (
@@ -131,7 +131,7 @@ export function AttachmentsPanel({ complaintId }: Props) {
                 <td className="mono muted">{a.mimeType}</td>
                 <td className="mono">{(a.byteSize / 1024).toFixed(1)} KB</td>
                 <td className="mono muted">{new Date(a.uploadedAt).toLocaleString()}</td>
-                <td className="right">
+                <td className="right no-print">
                   <Button variant="ghost" onClick={() => download(a)}>Download</Button>
                   {canDelete(a) && (
                     <Button

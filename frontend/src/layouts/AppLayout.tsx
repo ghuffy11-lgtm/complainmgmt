@@ -235,7 +235,7 @@ export function AppLayout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 bg-surface border-b border-border px-6 flex items-center justify-between shrink-0">
+        <header className="app-header h-14 bg-surface border-b border-border px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <span className="px-2.5 py-0.5 rounded-full bg-primary-bg text-primary text-[10px] font-bold uppercase tracking-wider border border-primary-border">
               Operational
@@ -269,7 +269,7 @@ export function AppLayout() {
           </div>
         </main>
 
-        <footer className="border-t border-border py-3 px-6 flex justify-between items-center bg-surface text-[11px] text-text-subtle">
+        <footer className="app-footer border-t border-border py-3 px-6 flex justify-between items-center bg-surface text-[11px] text-text-subtle">
           <span>{branding.organizationName} · {branding.footerText}</span>
           <span className="font-mono">{branding.systemShortName}</span>
         </footer>

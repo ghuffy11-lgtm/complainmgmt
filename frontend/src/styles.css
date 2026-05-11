@@ -309,4 +309,155 @@
   .kbd {
     @apply px-2 py-1 text-xs font-mono bg-surface-2 border border-border-strong rounded shadow-sm;
   }
+
+  /* Hidden on screen; revealed by the print stylesheet below for letterheads
+     and scope summaries. */
+  .print-only { display: none; }
+}
+
+/* ─── Print ──────────────────────────────────────────────────────────────
+ * Triggered by window.print() from the Print buttons on the complaint
+ * detail and dashboard pages. Strategy:
+ *   - Hide the app chrome (sidebar / top bar / footer) and any element
+ *     opted out by the page (action buttons, pickers, dropzones).
+ *   - Reveal .print-only blocks (letterhead, scope summary, footer).
+ *   - Flatten form controls to plain text so saved values print as
+ *     read-only paragraphs rather than empty input boxes.
+ *   - Keep chart and badge colours; the browser would otherwise strip
+ *     them in ink-saving mode.
+ */
+@media print {
+  /* Page-margin boxes for "Page X of Y" — supported by Chrome / Edge /
+     Safari paged-media. Firefox ignores @bottom-right and falls back to
+     the browser's own Headers-and-footers toggle, which is acceptable. */
+  @page {
+    size: A4;
+    margin: 18mm 12mm 22mm;
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 9px;
+      color: #6b7280;
+    }
+  }
+
+  html, body, #root {
+    background: white !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* AppLayout pins everything to viewport height with overflow:hidden — that
+     clips the print to one page. Undo for paper. */
+  .h-screen { height: auto !important; }
+  .overflow-hidden, .overflow-y-auto { overflow: visible !important; }
+
+  /* App chrome + anything the page explicitly excludes. */
+  aside,
+  .app-header,
+  .app-footer,
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+
+  .print-only { display: block !important; }
+
+  /* Remove the main column's max-width and padding so the printable area
+     uses the full page width. */
+  main > div { padding: 0 !important; max-width: none !important; }
+
+  /* Cards: keep the layout, drop the shadow, avoid splitting one across
+     a page boundary when it'll fit. */
+  .card {
+    box-shadow: none !important;
+    border-color: #d1d5db !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Each `.field` block prints as a visually distinct section so the
+     label / value pairs read like separate cells on paper. The inner
+     read-only text container (the existing border + bg-surface-2 wrap
+     around long narratives) is flattened to avoid a double border. */
+  .field {
+    border: 1px solid #d1d5db !important;
+    border-radius: 4px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 8px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .field > div[class*="bg-surface-2"] {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+  }
+
+  /* Flatten native form inputs to plain text values. */
+  input[type="text"], input[type="number"], input[type="date"],
+  input[type="email"], input[type="password"], input[type="search"],
+  textarea, select {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    color: black !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  textarea { resize: none !important; min-height: 0 !important; }
+  input[type="date"]::-webkit-calendar-picker-indicator { display: none !important; }
+
+  /* Radix Select trigger — flatten the combobox button + hide its chevron
+     so the selected option prints as plain text. */
+  [role="combobox"] {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    height: auto !important;
+    color: black !important;
+    cursor: default !important;
+    box-shadow: none !important;
+  }
+  [role="combobox"] svg { display: none !important; }
+
+  /* Force chart / badge / status-pill colours to ink. */
+  svg, .badge, [class*="bg-primary"], [class*="bg-warn"],
+  [class*="bg-danger"], [class*="bg-success"] {
+    color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Keep section headings with their content. */
+  h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+
+  /* Modals + toasts are transient — never print them. */
+  .backdrop, .modal, .toasts { display: none !important; }
+
+  /* Letterhead block (set by the page) sits at the top of every printout. */
+  .print-letterhead {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #111;
+  }
+  .print-letterhead img {
+    max-height: 56px;
+    max-width: 120px;
+    object-fit: contain;
+  }
+  .print-letterhead .print-titles { line-height: 1.25; }
+  .print-letterhead .print-org { font-size: 18px; font-weight: 700; color: #111; }
+  .print-letterhead .print-sys { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #555; }
+
+  /* Print-only "scope" / context line shown under the page title. */
+  .print-meta {
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 14px;
+  }
 }

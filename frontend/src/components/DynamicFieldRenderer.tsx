@@ -39,14 +39,14 @@ export function DynamicFieldRenderer({
         <span>{field.label}</span>
         {field.isRequired && <span style={{ color: 'var(--danger)' }}>*</span>}
         {locked && (
-          <span title={lockOwner ? `Locked — owner #${lockOwner}` : 'Locked'}>🔒</span>
+          <span className="no-print" title={lockOwner ? `Locked — owner #${lockOwner}` : 'Locked'}>🔒</span>
         )}
         {showUnlock && (
           <button
             type="button"
             onClick={onUnlock}
             title="Override the lock — recorded in audit."
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary-hover ml-1 px-1.5 py-0.5 rounded border border-border-strong bg-surface hover:bg-surface-hover"
+            className="no-print inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary-hover ml-1 px-1.5 py-0.5 rounded border border-border-strong bg-surface hover:bg-surface-hover"
           >
             <Unlock size={11} />
             Unlock
@@ -96,14 +96,32 @@ function renderInput(
           </div>
         );
       }
+      // Edit view: emit BOTH the editable textarea (screen-only) and a
+      // print-only paragraph that expands to fit the full value. A 3-row
+      // textarea would print truncated; the paragraph grows with the text
+      // and preserves line breaks. The print stylesheet flips which one
+      // is visible.
+      const v = (value as string) ?? '';
       return (
-        <textarea
-          value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          rows={3}
-          maxLength={typeof validation.maxLength === 'number' ? validation.maxLength : undefined}
-        />
+        <>
+          <textarea
+            className="no-print"
+            value={v}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+            rows={3}
+            maxLength={typeof validation.maxLength === 'number' ? validation.maxLength : undefined}
+          />
+          <div
+            className={
+              v
+                ? 'print-only whitespace-pre-wrap break-words text-[14px] leading-6 text-text-main rounded-md border border-border bg-surface-2/40 px-3 py-2 min-h-[40px]'
+                : 'print-only text-[14px] text-text-muted rounded-md border border-border bg-surface-2/40 px-3 py-2 min-h-[40px]'
+            }
+          >
+            {v || '—'}
+          </div>
+        </>
       );
     }
     case 'number': {
