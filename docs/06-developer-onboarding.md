@@ -56,6 +56,54 @@ Frontend hot-reload and backend hot-reload are configured via the dev compose ov
 - **PRs:** small, single-purpose; checklist asks for migration impact, audit impact, RBAC impact.
 - **Tests:** Jest in backend (`*.spec.ts`), Vitest in frontend.
 
+## Development workflow
+
+Two policies that apply to every change in this repo. They are not
+preferences — they have caused real incidents and are now mandatory.
+
+### 1. Dev-first deploy gate
+
+Every change ships to the dev stack first, gets tested, and only after
+the operator explicitly signs off does it ship to prod. **No prod
+deploy happens in the same turn that built or tested the change on
+dev.**
+
+The flow is always:
+
+```
+edit → docker compose up -d --build (on dev) → smoke / eyeball it
+     → operator confirms "looks good / deploy to prod"
+     → ssh cts-prod → git pull → migrate → rebuild → smoke
+```
+
+- Dev: `https://localhost:8443` on the host where you're editing.
+- Prod: `https://cts.hadiclinic.com.kw` via `ssh cts-prod`
+  (the alias is in `~/.ssh/config` — see
+  `docs/10-production-runbook.md` § Updating to a new release).
+- **Migrations** follow the same gate. Apply on dev DB first, watch
+  the app boot, then on prod DB. They are NOT auto-applied at
+  backend boot — `/docker-entrypoint-initdb.d` only runs on a fresh
+  volume.
+- **Emergencies** (e.g. live admin locked out, prod down) bypass the
+  gate; the operator says so explicitly when starting that work.
+
+### 2. GitHub commit attribution
+
+- `git config user.name` and `user.email` are set to
+  `ghuffy11-lgtm <ghuffy11@gmail.com>`. That's the only author.
+- **Do not** add a `Co-Authored-By: …` trailer to commit bodies.
+  It makes the GitHub commit page show a second author icon and
+  isn't appropriate for this repo.
+- Push via SSH:
+  `git@github.com:ghuffy11-lgtm/complainmgmt.git`. HTTPS push uses
+  `gh auth git-credential` and works but isn't the default.
+
+### 3. Branch model
+
+Single `main` branch. No release tags yet — the cadence is "ship from
+`main` after dev sign-off". Branches per feature are fine; merge back
+to `main` via fast-forward or squash before the prod step.
+
 ## Adding a backend module
 
 1. `backend/src/modules/<name>/` with at minimum:

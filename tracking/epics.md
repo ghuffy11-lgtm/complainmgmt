@@ -85,3 +85,6 @@ Closes the loop on recovery and brute-force protection for the second factor.
 - "Reset 2FA" action on the Users admin page (visible only when target has `totp_enrolled_at IS NOT NULL`).
 - `failed_2fa_count` shares the existing `locked_until` field — same 5-tries / 15-min window — so brute-forcing the 6-digit code is rate-limited to the same budget as password attempts.
 - Lockout thresholds (`maxFailures`, `lockoutMinutes`) move from hardcoded constants to `system_settings`, addressing the existing `TODO(roadmap)` in `local-auth.provider.ts`.
+
+## E18 — Email notifications  *(paused — operator testing)*
+Send plain-text emails with deep links on four complaint events: new complaint filed, assign / re-assign, status change, reopen. Per-user opt-in stored in `user_notification_prefs`. Transport via the clinic's SMTP server, creds in `.env` (not in DB). Design + file-by-file plan recorded in the held plan file at `/root/.claude/plans/quizzical-booping-owl.md`; will resume when the user reopens the task. **Phase A (plumbing + opt-in UI, NullTransport logs only)** ships first; **Phase B (SmtpNotificationTransport)** flips on real delivery once SMTP creds are configured.

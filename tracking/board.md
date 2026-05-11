@@ -1,26 +1,23 @@
 # Board (current state)
 
-Updated: 2026-05-10
+Updated: 2026-05-11
 
 | To Do | In Progress | Review | Done |
 |---|---|---|---|
-| T-130 `INotificationTransport` real impl (post-1.0) | — | — | T-001..T-125 (1.0) |
-| Future: LDAP provider |  |  | T-200..T-250 (E15 — UX feedback) |
-| Future: S3 attachment store |  |  | T-300..T-330 (E16 — round-2 UX) |
-| Future: log shipping / metrics |  |  | T-400..T-406 (E17 Batch A — auth audit + tripwire + retention) |
-| Future: container digest pinning |  |  | T-410..T-414 (E17 Batch B — unlock tooling) |
-| Future: dark-mode (tokens already in place) |  |  | T-420..T-430 (E17 Batch C — TOTP + backup codes) |
-|  |  |  | T-440..T-447 (E17 Batch D — reset + enforcement + thresholds) |
-|  |  |  | T-450, T-451, T-460 (E17 hot fixes + build hygiene) |
-| T-130 `INotificationTransport` real impl (post-1.0) |  |  |  |
-| Future: LDAP provider |  |  |  |
-| Future: S3 attachment store |  |  |  |
-| Future: log shipping / metrics |  |  |  |
-| Future: container digest pinning |  |  |  |
-| Future: dark-mode (tokens already in place) |  |  |  |
+| E18 — Email notifications (**paused — operator testing**) | — | — | T-001..T-125 (1.0) |
+| T-130 `INotificationTransport` real impl (folded into E18) |  |  | T-200..T-250 (E15 — UX feedback) |
+| Future: LDAP provider |  |  | T-300..T-330 (E16 — round-2 UX) |
+| Future: S3 attachment store |  |  | T-400..T-406 (E17 Batch A — auth audit + tripwire + retention) |
+| Future: log shipping / metrics |  |  | T-410..T-414 (E17 Batch B — unlock tooling) |
+| Future: container digest pinning |  |  | T-420..T-430 (E17 Batch C — TOTP + backup codes) |
+| Future: dark-mode (tokens already in place) |  |  | T-440..T-447 (E17 Batch D — reset + enforcement + thresholds) |
+|  |  |  | T-450, T-451, T-460, T-461 (E17 hot fixes + build hygiene) |
 
 ## Recently moved
 
+- 2026-05-11 — Docs catch-up: new `docs/11-operations-cookbook.md` (auth audit / 2FA recovery / append-only triggers / permission gotchas / troubleshooting), new **Development workflow** section in `docs/06-developer-onboarding.md` codifying dev-first deploy gate + no-`Co-Authored-By` policy, runbook cross-link, README index. E18 (email notifications) marked **paused** pending operator testing; plan retained at `/root/.claude/plans/quizzical-booping-owl.md`.
+- 2026-05-11 — Ad-hoc operator work on prod: 46 departments bulk-imported (DIETETICS / CAFETERIA typo corrections applied post-import), `hod` role on dev de-duplicated (`complaint:read` removed in favor of `complaint.own:read`), migration `0030_complaint_audit_allow_cascade_delete.sql` applied to both envs so complaints can be cleaned up via `SET LOCAL app.allow_audit_delete`, one test complaint deleted from prod.
+- 2026-05-11 — NFS-backed nightly backup configured on prod: `/mnt/lxbackup/cts/` mounted from `10.1.27.220:/volume1/LXBackup`, root crontab at 02:00 UTC running `BACKUP_DIR=/var/lib/docker/cts-backups MIRROR_DIR=/mnt/lxbackup/cts …`. `scripts/backup.sh` gained `MIRROR_DIR` + `MIRROR_RETAIN_DAYS`. Documented in `docs/04-deployment-guide.md` § Backup.
 - 2026-05-10 — E17 Batch A polish (T-405, T-406) + T-460 build hygiene shipped: tripwire endpoint + Login Activity panel for IPs with ≥10 failures in 24h, nightly retention cron at 03:00 UTC reading `auth_audit.retention_days` from `system_settings` (default 365), Dockerfile switched to lockfile + `npm ci` so native-module prebuilds are reproducible. **E17 done.**
 - 2026-05-10 — E17 Batch D (T-440..T-447) shipped: `user:reset_2fa` permission + admin reset endpoint + UI button, `TwoFactorRequiredGuard` enforcing mandatory 2FA for admin role (with frontend force-enrollment dialog), `failed_2fa_count` participates in the same lockout window as password failures, `LockoutPolicy` service moves thresholds out of hardcoded constants and into `system_settings` (cache-invalidated on save), API docs updated, new `scripts/smoke-test-2fa.sh` walks the full 11-step happy path with stdlib-only TOTP computation. **E17 done modulo Batch A polish (T-405/T-406).**
 - 2026-05-10 — E17 Batch C (T-420..T-430) shipped: TOTP-based 2FA. New schema (`totp_secret_enc`, `totp_enrolled_at`, `failed_2fa_count`, `user_backup_codes`), AES-256-GCM `SecretCipher`, `TwoFactorService` with otplib + qrcode, four endpoints (`/auth/2fa/{setup,enable,verify,disable}`), login flow split with single-use challenge JWTs, 3-step enrollment wizard with backup-code download/copy/print, login-page code prompt with TOTP↔backup-code toggle. `TOTP_ENCRYPTION_KEY` added to `.env` + compose. Backend + frontend rebuilt and live; verified routes mounted, audit pipe still emitting `login.password_failed` for non-2FA users.
@@ -60,7 +57,9 @@ A task is **Done** only when:
 - **E15 (UX feedback):** ✅ All six batches A–F done.
 - **E16 (round-2 UX feedback):** ✅ Roles-editor pre-populate fix, attachment-delete split, dashboard click-throughs, user/department dashboard scope, theme handover doc.
 
-**1.0 + two rounds of UX iteration complete.** Remaining items
-(T-130 notifications, LDAP, S3, log shipping, container pinning,
-dark-mode) are explicitly post-1.0 and tracked in `docs/07-roadmap.md`.
-Next direction is the user's call.
+**1.0 + two rounds of UX iteration + E17 (auth hardening) complete.**
+Email notifications (E18) drafted and paused for operator testing;
+plan retained at `/root/.claude/plans/quizzical-booping-owl.md`.
+Remaining items (LDAP, S3, log shipping, container pinning, dark-mode)
+are explicitly post-1.0 and tracked in `docs/07-roadmap.md`. Next
+direction is the user's call.

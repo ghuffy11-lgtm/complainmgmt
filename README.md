@@ -71,8 +71,11 @@ The current `main` includes work from the post-handover phase:
 | [docs/06-developer-onboarding.md](docs/06-developer-onboarding.md) | Local setup, conventions |
 | [docs/07-roadmap.md](docs/07-roadmap.md) | Phased delivery plan |
 | [docs/08-security-review.md](docs/08-security-review.md) | Security model |
-| [docs/10-production-runbook.md](docs/10-production-runbook.md) | Step-by-step IP-only production deploy with self-signed TLS |
+| [docs/10-production-runbook.md](docs/10-production-runbook.md) | Step-by-step IP-only production deploy with self-signed TLS, plus the live `cts.hadiclinic.com.kw` deploy procedure |
+| [docs/11-operations-cookbook.md](docs/11-operations-cookbook.md) | Operator know-how: auth audit / 2FA recovery / append-only triggers / permission gotchas / troubleshooting |
 | [docs/99-archive-theme-spec-for-lovable.md](docs/99-archive-theme-spec-for-lovable.md) | Archived — pre-port theme handover, kept for history |
+
+> **Working on this repo?** Read `docs/06-developer-onboarding.md` § Development workflow before pushing. Two rules: dev-first deploy gate, no `Co-Authored-By` trailers on commits.
 
 ## Skill files
 

@@ -1,0 +1,402 @@
+# 11 — Operations cookbook
+
+Operational know-how that's accumulated from real incidents. Each entry
+is "what it is, why it exists, and what to do when X". Designed for the
+person who walks into this system at 02:00 with a problem.
+
+For everyday deploy / backup / rollback procedures see
+`docs/10-production-runbook.md`. This file fills in the gaps around
+auth, audit, permissions, and recovery.
+
+---
+
+## Auth audit log + "Login activity" admin page
+
+Every authentication event is recorded in `auth_audit_log`. Visible
+under **Admin → Login activity** (gated by the `auth_audit:read`
+permission — admin role only by default).
+
+**Events captured** (one row per event):
+
+| Event | Fires when |
+|---|---|
+| `login.success` | password OK + 2FA OK (if enrolled) → session issued |
+| `login.password_failed` | wrong password |
+| `login.unknown_user` | username not found |
+| `login.account_locked` | login attempt against a locked account |
+| `login.inactive` | login attempt against `is_active = false` |
+| `login.wrong_provider` | local password tried on a non-`local` account |
+| `login.2fa_success` / `login.2fa_failed` | 2FA verify outcomes |
+| `account.locked` | threshold crossed → lockout set |
+| `account.unlocked_by_admin` | admin clicked Unlock |
+| `2fa.enrolled` / `2fa.disabled` / `2fa.reset_by_admin` | 2FA lifecycle |
+| `password_changed` | self-service change |
+| `logout` | refresh-token revocation |
+
+Each row carries `username` (always — even for unknown-user attempts),
+`user_id` (nullable), `ip`, `user_agent`, and an event-specific
+`detail` jsonb.
+
+### Filters
+
+The page supports `username` (exact), `ip` (exact), `event` (single
+or comma-separated), a `success / failures only` shortcut, and a
+date range. URL params round-trip so a filtered link is shareable.
+
+### "Recent failures by IP" tripwire panel
+
+Top of the page when there's something to surface: any IP with
+**≥ 10 failure events in the last 24 hours**. Each IP is a clickable
+chip that pre-fills the filter for that IP + failures-only. Refreshes
+every 60s.
+
+### Retention
+
+`auth_audit.retention_days` (in `system_settings`, default 365)
+controls when rows are pruned by the nightly `AuthAuditRetentionService`
+cron at 03:00 UTC. Set to 0 to retain forever. Pruning DELETE is gated
+on a session-local flag — see "Append-only audit tables" below.
+
+---
+
+## Unlocking a user
+
+Five wrong passwords in a short window → 15-minute lockout. Three
+recovery paths in order of preference:
+
+1. **In-app Unlock button.** Admin → Users → row shows a `locked`
+   badge → click **Unlock**. The user can immediately retry login.
+   This emits an `account.unlocked_by_admin` row to `auth_audit_log`
+   with the acting admin's id in `detail`. Requires the
+   `user:unlock` permission (admin only by default).
+
+2. **Break-glass script.** When *no* admin can log in — typically
+   "the only admin is the one locked out":
+   ```bash
+   ssh cts-prod
+   cd /opt/complainmgmt
+   ./scripts/unlock-user.sh <username>
+   ```
+   Shell-level SQL via `psql -v` (injection-safe). Prints state
+   before/after. The action is NOT captured in `auth_audit_log`
+   because it bypasses the API — that's the cost of working when
+   the API is unreachable.
+
+3. **Raw SQL.** Last resort:
+   ```sql
+   UPDATE users
+      SET failed_login_count = 0, locked_until = NULL
+    WHERE username = '<username>';
+   ```
+
+The lockout thresholds (5 attempts / 15-minute window) come from
+`system_settings` keys `lockout.max_failed_logins` and
+`lockout.duration_minutes`. Edit them via **Admin → Settings**;
+they take effect on the next login (30-second cache TTL).
+
+---
+
+## 2FA lifecycle
+
+### Enrollment
+
+- **Admin role users**: forced. The `TwoFactorRequiredGuard` returns
+  `412 MUST_ENROLL_2FA` on any non-allow-listed request from an
+  admin without `totp_enrolled_at`. The frontend interceptor catches
+  the 412 and pops a non-dismissable enrollment wizard. Allow-listed
+  paths: `/auth/me`, `/auth/logout`, `/auth/change-password`,
+  `/auth/2fa/setup`, `/auth/2fa/enable`.
+- **Non-admin users**: optional. Header **Set up 2FA** button opens
+  the same wizard.
+
+The wizard is 3 steps: QR + manual key → confirm 6-digit code →
+display 10 single-use backup codes. Backup codes are shown **once**;
+the user MUST save them off-system. The "I have saved my backup
+codes" checkbox gates the **Done** button.
+
+### Recovery (lost authenticator)
+
+1. **User uses a backup code.** Each is single-use; "use a backup
+   code instead" link on the login prompt swaps the input.
+2. **Admin resets 2FA.** Admin → Users → row → **Reset 2FA**. Clears
+   the secret + all backup codes, force-logs-out the user's
+   sessions, emits `2fa.reset_by_admin`. User must re-enroll on
+   next login.
+3. **SQL break-glass.** Last resort when no admin can act:
+   ```sql
+   UPDATE users
+      SET totp_secret_enc = NULL,
+          totp_enrolled_at = NULL,
+          failed_2fa_count = 0
+    WHERE username = '<username>';
+   DELETE FROM user_backup_codes WHERE user_id = (
+     SELECT id FROM users WHERE username = '<username>'
+   );
+   ```
+
+### TOTP_ENCRYPTION_KEY rotation
+
+The 32-byte base64 key encrypts every TOTP secret at rest. **Rotating
+this key invalidates every enrolled user's secret** — they all get
+booted back to enrollment. Cost is the same regardless of how many
+users you have. Treat like `JWT_SECRET`.
+
+---
+
+## Append-only audit tables and the session-flag escape hatch
+
+`complaint_audit_log` and `auth_audit_log` both have a BEFORE
+UPDATE/DELETE trigger that unconditionally raises
+`<table> is append-only`. This protects against accidental
+modification — but it also blocked **every legitimate** FK cascade and
+retention prune until migrations 0027, 0029, and 0030 loosened it.
+
+The current rule: **DELETE is allowed only when the caller has set a
+session-local flag** for the current transaction:
+
+```sql
+BEGIN;
+SET LOCAL app.allow_audit_delete = 'true';
+DELETE FROM <table> WHERE …;
+COMMIT;
+```
+
+`SET LOCAL` keeps the flag scoped to the transaction — it does NOT
+leak across connections or to subsequent transactions on the same
+connection. Arbitrary UPDATE is still blocked; only the specific
+shape needed by FK SET-NULL cascades (single column changes, all
+others unchanged) is allowed.
+
+### Cleaning up test complaints
+
+Operators routinely create test complaints to validate workflow,
+then need to delete them. Because every complaint has audit rows by
+day one, the cascade DELETE on `complaint_audit_log` needs the flag.
+Procedure:
+
+```bash
+ssh cts-prod
+cd /opt/complainmgmt
+./scripts/backup.sh                   # always snapshot first
+docker compose exec -T db psql -U "$(grep ^POSTGRES_USER= .env | cut -d= -f2)" \
+                                     -d "$(grep ^POSTGRES_DB= .env | cut -d= -f2)" <<'SQL'
+BEGIN;
+SET LOCAL app.allow_audit_delete = 'true';
+-- Preview the cascade before pulling the trigger
+SELECT id, reference_no FROM complaints WHERE <criteria>;
+DELETE FROM complaints WHERE <criteria>;
+COMMIT;
+SQL
+```
+
+The cascade removes `complaint_field_values`, `complaint_audit_log`,
+`complaint_assignment_history`, and `complaint_attachments` rows for
+the deleted complaint(s).
+
+### Migrations that own this pattern
+
+- `0022` — added `auth_audit_log` with the trigger.
+- `0027` — loosened `auth_audit_log` UPDATE trigger to allow the FK
+  `ON DELETE SET NULL` cascade from `users`.
+- `0029` — loosened `auth_audit_log` DELETE trigger via the session
+  flag (enables the retention cron).
+- `0030` — same pattern applied to `complaint_audit_log` (enables
+  complaint deletion).
+
+---
+
+## Permission-grant gotchas
+
+### Broad vs scoped: the broad one always wins
+
+| If a role has… | The user… |
+|---|---|
+| `dashboard:read` (broad) | sees every department's dashboard, regardless of department membership |
+| `dashboard.own:read` (scoped) | sees only their own departments' dashboard |
+| **Both** | gets the broad behavior — the scoping is silently skipped |
+
+Same pattern for `complaint:read` vs `complaint.own:read`.
+
+**Common symptom**: "User X with the `hod` role can still see other
+departments." Cause: either the `hod` role was granted both
+permissions, or the user has multiple roles and one of them
+(e.g. `coordinator`) granted the broad one. **Diagnose** via:
+
+```sql
+SELECT DISTINCT p.resource || ':' || p.action AS permission
+  FROM users u
+  JOIN user_roles ur ON ur.user_id = u.id
+  JOIN role_permissions rp ON rp.role_id = ur.role_id
+  JOIN permissions p ON p.id = rp.permission_id
+ WHERE u.username = '<username>'
+ ORDER BY 1;
+```
+
+If both `:read` and `.own:read` appear, **untick the broad one** in
+**Admin → Roles → <role> → permissions grid**. The change takes effect
+on the user's next request (permissions resolve fresh per request, no
+re-login needed).
+
+### Edit User modal — the role checkboxes are authoritative
+
+Post-`05903d0` (2026-05-10), the **Edit User** modal pre-checks the
+user's current roles and treats the checkbox state as authoritative
+on save. **Unticking a role and saving will remove that role.**
+Before that commit, empty checkboxes meant "no change" — that
+semantics is gone.
+
+If an operator on an old cached frontend sees empty checkboxes,
+**hard-refresh** to pick up the new build.
+
+---
+
+## Roles editor mental model
+
+- **`complaint.own:read`** = "see complaints assigned to one of my
+  active departments, plus complaints I created." Resolved at
+  request time via `complaints.assigned_department_id IN (my
+  department ids)` plus `created_by = me`.
+- **`complaint:read`** = "see every complaint." Wins over the
+  `.own:read` variant when both are present.
+- **`complaint.field:*:read`** = wildcard read on every dynamic
+  field. The per-field flavor (`complaint.field:<key>:read`) is
+  intended for cases where you want to grant a single field;
+  granting the wildcard makes per-field grants redundant.
+- **`complaint.field:<key>:override`** = the user can click
+  "Unlock" on a locked field even if they're not the original
+  writer. The override action is captured as a `lock_override`
+  audit row.
+- **`audit:read`** vs **`auth_audit:read`** = the first reads the
+  complaint audit timeline; the second reads `auth_audit_log` (the
+  Login Activity page).
+
+---
+
+## NFS-backed backup runbook (cross-reference)
+
+The full procedure (mount, cron line, retention) lives in
+`docs/04-deployment-guide.md` § Backup. Operator daily checklist:
+
+```bash
+ssh cts-prod
+sudo tail -20 /var/log/cts-backup.log     # last night's run
+sudo ls -la /mnt/lxbackup/cts/ | tail -5  # off-host copy present
+```
+
+If the share is unreachable, the **local** backup at
+`/var/lib/docker/cts-backups/` still happens — the cron log records
+the mirror failure but exits 0. Investigate the share, then re-run
+the cron command manually as root once it's back.
+
+---
+
+## Department naming convention
+
+The Hadi Clinic deployment uses:
+
+- **`name`**: ALL CAPS display string (e.g. `MEDICAL IMAGING & INTERVENTIONAL RADIOLOGY`).
+- **`key`**: lower-snake-case slug (e.g. `medical_imaging_interventional_radiology`).
+  The `&` is dropped; non-alphanumeric chars collapse to `_`; leading
+  digit is prefixed with `d_`.
+
+All foreign keys point at `departments.id` (not `key`), so renaming
+either field is purely cosmetic — no FK breakage. Bulk imports go via
+a single transaction with `INSERT INTO departments (key, name,
+is_active)`; existing rows can be relabeled with `UPDATE departments
+SET key = …, name = … WHERE id = …`.
+
+---
+
+## Troubleshooting
+
+Symptom → cause → fix, in operator language. Every entry corresponds
+to a real incident.
+
+### "Admin can't log in"
+5 failed attempts → 15-minute lockout. Fix via the in-app **Unlock**
+button (another admin) or `scripts/unlock-user.sh` (no admin
+available). See "Unlocking a user" above.
+
+### "Backend crashed after rebuild: `INITIAL_ADMIN_PASSWORD is not allowed to be empty`"
+Joi schema rejected an empty string from the compose
+`${INITIAL_ADMIN_PASSWORD:-}` default. Fix: append any 10+ char
+placeholder to `.env`; never read because the bootstrap only runs
+when no admin exists. Permanent fix in commit `4e1b5bc` (schema now
+accepts empty).
+
+### "QR code at 2FA enrollment is a tiny smudge"
+qrcode library emitted SVG without `width`/`height`. Permanent fix
+sets `{ width: 240 }` in `backend/src/modules/auth/two-factor.service.ts`.
+If it recurs, that's the line to check.
+
+### "User can see other departments' dashboard / complaints though I gave them `dashboard.own:read` / `complaint.own:read`"
+They also have the broad `dashboard:read` / `complaint:read`. See
+"Permission-grant gotchas" above. Untick the broad one in
+**Admin → Roles**.
+
+### "Role checkboxes empty when I open Edit User"
+That's the pre-`05903d0` behavior; you're on an old cached frontend.
+Hard-refresh (Ctrl+Shift+R / Cmd+Shift+R).
+
+### "Can't delete a complaint or user — `is append-only`"
+The audit-log trigger blocks the FK cascade. Use the
+`SET LOCAL app.allow_audit_delete = 'true'` flag inside the
+transaction. See "Append-only audit tables" above.
+
+### "NFS share full / unreachable at backup time"
+Local backup still succeeds; `/var/log/cts-backup.log` records the
+mirror failure but the script exits 0. Investigate the share, then
+re-run the cron command manually as root once it's back.
+
+### "Login Activity panel shows no IP tripwire"
+Threshold is ≥ 10 failures in 24h. If you genuinely have fewer than
+10 failures from any single IP, the panel correctly hides — that's
+not a bug, that's "nothing to surface."
+
+### "Dashboard 'By department' chart is unreadable / squished"
+Pre-`f4d1bf6` it was fixed-height (180 px) regardless of how many
+departments existed. Hard-refresh on a post-deploy frontend; the
+chart now scales with row count.
+
+### "Read-only complaint fields visually merge for non-editor users"
+Same — pre-`f4d1bf6` bug: the read-view text branch rendered as a
+plain `<div>` paragraph with no border. Hard-refresh; the new build
+wraps each value in a field-shaped container.
+
+### "I assigned the `hod` role to a user but they still see everything"
+Two possibilities — check both:
+1. The role itself has both broad and scoped permissions
+   (see "Broad vs scoped" above).
+2. The user was never actually assigned to the role. Open
+   **Admin → Users → Edit <user>** and verify `hod` is ticked.
+   If you ticked `hod` but didn't save, or the save 401'd
+   silently, the assignment didn't take.
+
+### "`auth_audit_log` retention cron logs `is append-only`"
+Pre-`0029` migration. Apply `0029_auth_audit_allow_retention_delete.sql`
+to add the flag escape hatch, or the cron will never actually prune.
+The service already sets the flag — it just needs the trigger to honor
+it.
+
+### "Admin user is force-redirected to a 2FA enrollment dialog and can't dismiss it"
+That's the `TwoFactorRequiredGuard` working as designed for
+admin-role users. Complete enrollment. If the admin doesn't have an
+authenticator app handy and is locked out of using the system, you
+can break the gate via SQL:
+
+```sql
+UPDATE users
+   SET totp_secret_enc = NULL,
+       totp_enrolled_at = NULL,
+       failed_2fa_count = 0
+ WHERE username = '<admin-username>';
+```
+
+This is a temporary measure — they'll be re-redirected on their next
+login. Use it only when an admin is in a hurry; the right fix is to
+finish enrollment.
+
+### "Complaint detail page loads but every field is `—`"
+The user doesn't have read permission on the per-field permissions
+that gate value display. Check
+`complaint.field:*:read` and per-field reads on their role(s).

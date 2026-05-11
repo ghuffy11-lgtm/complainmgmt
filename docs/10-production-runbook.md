@@ -207,6 +207,8 @@ Once the smoke is green and you've completed the first-login setup, send the URL
 
 ## Updating to a new release
 
+> **Always test on dev first.** Build, migrate, and verify on the dev stack (`https://localhost:8443`) and get explicit operator sign-off before touching prod. Same gate applies to migrations — apply on dev DB first, watch the app boot, then on prod DB. Emergencies (live admin locked out, prod down) bypass the gate; the operator says so explicitly. See `docs/06-developer-onboarding.md` § Development workflow for the full policy.
+
 Production is at **`https://cts.hadiclinic.com.kw`** (host `int`, IP `10.1.27.99`, repo `/opt/complainmgmt`). Deploys are SSH-driven: clone is updated with `git pull`, migrations are applied manually against the running DB, then containers are rebuilt and recreated. Migrations are **not** auto-applied at backend boot — they're mounted to `/docker-entrypoint-initdb.d` which only runs on a fresh DB volume, so manual application is the only path on a populated cluster.
 
 The full procedure, step by step:
