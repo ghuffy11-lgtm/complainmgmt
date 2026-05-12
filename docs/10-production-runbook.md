@@ -211,6 +211,8 @@ Once the smoke is green and you've completed the first-login setup, send the URL
 
 Production is at **`https://cts.hadiclinic.com.kw`** (host `int`, IP `10.1.27.99`, repo `/opt/complainmgmt`). Deploys are SSH-driven: clone is updated with `git pull`, migrations are applied manually against the running DB, then containers are rebuilt and recreated. Migrations are **not** auto-applied at backend boot — they're mounted to `/docker-entrypoint-initdb.d` which only runs on a fresh DB volume, so manual application is the only path on a populated cluster.
 
+> **The prod host has no outbound internet.** GitHub (ports 22 and 443) and Docker Hub (`registry-1.docker.io`) are both blocked at the firewall. That means the textbook `git pull` in step 3 and `docker compose up -d --build` in step 5 will hang and fail. You always deploy by shipping the diff *into* prod over the existing SSH tunnel — see the "Offline path" callouts in steps 3 and 5. A symptom of forgetting this: `ssh: connect to host github.com port 22: Connection timed out` from step 3, or `dial tcp …:443: i/o timeout` while resolving `node:20-alpine` from step 5.
+
 The full procedure, step by step:
 
 ```bash
@@ -235,6 +237,8 @@ git log --oneline ..origin/main          # commits about to land
 git diff ..origin/main -- .env.example   # any new env keys?
 ```
 
+Offline path: `git fetch origin` won't work for the same reason step 3 doesn't — run the equivalent `git log` / `git diff` on your workstation against `origin/main` and read the result there, or run them on prod after you've fetched from the bundle in step 3.
+
 If `.env.example` shows new keys, **add them to your `.env` before rebuilding**. The most common surprise is `TOTP_ENCRYPTION_KEY`: if missing on a backend that supports 2FA, the cipher logs a warning and the 2FA endpoints respond with `503 TOTP_NOT_CONFIGURED` — the rest of the app keeps working, but admin enrollment fails. Generate one with `openssl rand -base64 32`.
 
 Watch out for blank `INITIAL_ADMIN_*` lines — operators commonly blank `INITIAL_ADMIN_PASSWORD` after first boot for safety. The schema accepts blank values from `0d9905f` onward, but *missing* the line entirely while the compose file passes `${INITIAL_ADMIN_PASSWORD:-}` (empty) used to crash the boot. If the line is gone, append a placeholder of any 10+ chars (the bootstrap path doesn't run when an admin already exists, so the value is never read):
@@ -250,6 +254,23 @@ git pull --ff-only origin main
 ```
 
 `--ff-only` refuses to merge — if it errors, the local branch has diverged and someone else's commits need handling first.
+
+**Offline path (current prod reality).** GitHub is unreachable from prod, so the standard pull will time out. Instead, build a git bundle on your workstation that contains everything from prod's current `HEAD` to the new tip, ship it over SSH, and fetch from the bundle file:
+
+```bash
+# on your workstation
+PROD_HEAD=$(ssh cts-prod 'cd /opt/complainmgmt && git rev-parse HEAD')
+git bundle create /tmp/cts-deploy.bundle ${PROD_HEAD}..origin/main
+scp /tmp/cts-deploy.bundle cts-prod:/tmp/
+
+# on prod
+cd /opt/complainmgmt
+git fetch /tmp/cts-deploy.bundle HEAD:refs/remotes/bundle/main
+git merge --ff-only refs/remotes/bundle/main
+rm /tmp/cts-deploy.bundle    # tidy
+```
+
+`git bundle verify /tmp/cts-deploy.bundle` on the workstation first will confirm the start ref matches prod's `HEAD` before you scp. If `git merge --ff-only` complains, prod has commits the workstation doesn't — investigate before forcing.
 
 ### 4. Apply new migrations in order
 
@@ -285,6 +306,25 @@ docker compose up -d --build backend frontend
 ```
 
 Roughly 60–120 seconds. The DB stays up; backend is replaced first, then frontend. Active SPA sessions may see one transient 502 before the refresh-token interceptor heals it.
+
+**Offline path (current prod reality).** `--build` reaches out to Docker Hub for the base layers in `frontend/Dockerfile` and `backend/Dockerfile` (`node:20-alpine`, `nginx:1.27-alpine`, etc.); on a host with no Docker Hub access this fails with `failed to resolve source metadata … i/o timeout`. Build the image on your workstation, save it to a tarball, ship it, and recreate the container against the loaded image — no `--build`:
+
+```bash
+# on your workstation — only the service(s) that changed
+docker compose build frontend                              # or: backend
+docker save complainmgmt-frontend:latest | gzip > /tmp/cts-frontend.tar.gz
+scp /tmp/cts-frontend.tar.gz cts-prod:/tmp/
+
+# on prod
+docker load < /tmp/cts-frontend.tar.gz
+cd /opt/complainmgmt
+docker compose up -d --no-build --force-recreate frontend  # or: backend
+rm /tmp/cts-frontend.tar.gz
+```
+
+`--no-build` makes the failure mode louder: if the named image isn't present locally, compose errors instead of silently trying Docker Hub. The frontend tarball is ~20–25 MB; the backend tarball is ~250 MB — slower scp, but still single-digit minutes on the office network.
+
+If a new prod release pins a base image prod doesn't yet have cached (`docker images` on prod is your inventory), the build stage on your workstation will fetch it and bake it into the saved tarball — no separate `docker pull` round trip on prod needed.
 
 ### 6. Verify
 
