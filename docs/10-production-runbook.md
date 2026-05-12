@@ -211,7 +211,7 @@ Once the smoke is green and you've completed the first-login setup, send the URL
 
 Production is at **`https://cts.hadiclinic.com.kw`** (host `int`, IP `10.1.27.99`, repo `/opt/complainmgmt`). Deploys are SSH-driven: clone is updated with `git pull`, migrations are applied manually against the running DB, then containers are rebuilt and recreated. Migrations are **not** auto-applied at backend boot — they're mounted to `/docker-entrypoint-initdb.d` which only runs on a fresh DB volume, so manual application is the only path on a populated cluster.
 
-> **The prod host has no outbound internet.** GitHub (ports 22 and 443) and Docker Hub (`registry-1.docker.io`) are both blocked at the firewall. That means the textbook `git pull` in step 3 and `docker compose up -d --build` in step 5 will hang and fail. You always deploy by shipping the diff *into* prod over the existing SSH tunnel — see the "Offline path" callouts in steps 3 and 5. A symptom of forgetting this: `ssh: connect to host github.com port 22: Connection timed out` from step 3, or `dial tcp …:443: i/o timeout` while resolving `node:20-alpine` from step 5.
+> **Fallback if prod loses outbound internet.** Today the prod host can reach GitHub and Docker Hub, so the textbook `git pull` (step 3) and `docker compose up -d --build` (step 5) work as written. They have failed in the past — a tightened firewall blocked GitHub (ports 22 and 443) and `registry-1.docker.io`. If you see `ssh: connect to host github.com port 22: Connection timed out` from step 3, or `dial tcp …:443: i/o timeout` while resolving `node:20-alpine` from step 5, you've hit that state again. The "Offline path" callouts in steps 2, 3, and 5 ship the diff *into* prod over the existing SSH tunnel without needing outbound network.
 
 The full procedure, step by step:
 
@@ -237,7 +237,7 @@ git log --oneline ..origin/main          # commits about to land
 git diff ..origin/main -- .env.example   # any new env keys?
 ```
 
-Offline path: `git fetch origin` won't work for the same reason step 3 doesn't — run the equivalent `git log` / `git diff` on your workstation against `origin/main` and read the result there, or run them on prod after you've fetched from the bundle in step 3.
+Offline path (fallback if prod can't reach GitHub): `git fetch origin` won't work for the same reason step 3's pull won't — run the equivalent `git log` / `git diff` on your workstation against `origin/main` and read the result there, or run them on prod after you've fetched from the bundle in step 3.
 
 If `.env.example` shows new keys, **add them to your `.env` before rebuilding**. The most common surprise is `TOTP_ENCRYPTION_KEY`: if missing on a backend that supports 2FA, the cipher logs a warning and the 2FA endpoints respond with `503 TOTP_NOT_CONFIGURED` — the rest of the app keeps working, but admin enrollment fails. Generate one with `openssl rand -base64 32`.
 
@@ -255,7 +255,7 @@ git pull --ff-only origin main
 
 `--ff-only` refuses to merge — if it errors, the local branch has diverged and someone else's commits need handling first.
 
-**Offline path (current prod reality).** GitHub is unreachable from prod, so the standard pull will time out. Instead, build a git bundle on your workstation that contains everything from prod's current `HEAD` to the new tip, ship it over SSH, and fetch from the bundle file:
+**Offline path (fallback if prod can't reach GitHub).** If the pull above times out, build a git bundle on your workstation that contains everything from prod's current `HEAD` to the new tip, ship it over SSH, and fetch from the bundle file:
 
 ```bash
 # on your workstation
@@ -307,7 +307,7 @@ docker compose up -d --build backend frontend
 
 Roughly 60–120 seconds. The DB stays up; backend is replaced first, then frontend. Active SPA sessions may see one transient 502 before the refresh-token interceptor heals it.
 
-**Offline path (current prod reality).** `--build` reaches out to Docker Hub for the base layers in `frontend/Dockerfile` and `backend/Dockerfile` (`node:20-alpine`, `nginx:1.27-alpine`, etc.); on a host with no Docker Hub access this fails with `failed to resolve source metadata … i/o timeout`. Build the image on your workstation, save it to a tarball, ship it, and recreate the container against the loaded image — no `--build`:
+**Offline path (fallback if prod can't reach Docker Hub).** `--build` reaches out to Docker Hub for the base layers in `frontend/Dockerfile` and `backend/Dockerfile` (`node:20-alpine`, `nginx:1.27-alpine`, etc.); on a host with no Docker Hub access this fails with `failed to resolve source metadata … i/o timeout`. Build the image on your workstation, save it to a tarball, ship it, and recreate the container against the loaded image — no `--build`:
 
 ```bash
 # on your workstation — only the service(s) that changed
