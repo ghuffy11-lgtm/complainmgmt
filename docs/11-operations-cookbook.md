@@ -172,7 +172,13 @@ others unchanged) is allowed.
 Operators routinely create test complaints to validate workflow,
 then need to delete them. Because every complaint has audit rows by
 day one, the cascade DELETE on `complaint_audit_log` needs the flag.
-Procedure:
+
+The same procedure works for any complaint that legitimately needs
+to be removed (test data, duplicate, filed in error). For real
+grievances, prefer `status = 'rejected'` or `'closed'` — deletion
+loses history.
+
+#### Quick procedure (one block)
 
 ```bash
 ssh cts-prod
@@ -183,8 +189,8 @@ docker compose exec -T db psql -U "$(grep ^POSTGRES_USER= .env | cut -d= -f2)" \
 BEGIN;
 SET LOCAL app.allow_audit_delete = 'true';
 -- Preview the cascade before pulling the trigger
-SELECT id, reference_no FROM complaints WHERE <criteria>;
-DELETE FROM complaints WHERE <criteria>;
+SELECT id, reference_no FROM complaints WHERE reference_no = 'CMP-2026-000XXX';
+DELETE FROM complaints WHERE reference_no = 'CMP-2026-000XXX';
 COMMIT;
 SQL
 ```
@@ -192,6 +198,98 @@ SQL
 The cascade removes `complaint_field_values`, `complaint_audit_log`,
 `complaint_assignment_history`, and `complaint_attachments` rows for
 the deleted complaint(s).
+
+#### Step-by-step (recommended for first-timers)
+
+Each step is its own command so you can verify the result before
+moving on.
+
+**1. Connect to prod.**
+
+```bash
+ssh cts-prod
+cd /opt/complainmgmt
+```
+
+If `ssh cts-prod` hangs, see [Troubleshooting](#troubleshooting-deletion)
+below.
+
+**2. Set a shell alias for the rest of the session** (saves typing).
+
+```bash
+PSQL="docker compose exec -T db psql -U $(grep ^POSTGRES_USER= .env | cut -d= -f2) -d $(grep ^POSTGRES_DB= .env | cut -d= -f2)"
+```
+
+**3. Find the complaint and inspect it** before deleting.
+
+```bash
+$PSQL <<'SQL'
+SELECT id, reference_no, status, priority, created_by,
+       assigned_department_id, created_at
+  FROM complaints WHERE reference_no = 'CMP-2026-000XXX';
+
+-- Show the form fields so you can confirm it's the right one
+SELECT df.label,
+       COALESCE(cfv.value_text, cfv.value_number::text,
+                cfv.value_date::text,
+                (SELECT label FROM dynamic_field_options
+                  WHERE id = cfv.value_option_id)) AS value
+  FROM complaint_field_values cfv
+  JOIN dynamic_fields df ON df.id = cfv.field_id
+ WHERE cfv.complaint_id = (SELECT id FROM complaints
+                            WHERE reference_no = 'CMP-2026-000XXX')
+ ORDER BY df.sort_order;
+SQL
+```
+
+If the SELECT returns 0 rows, the reference number is wrong — STOP.
+Do not run the DELETE.
+
+**4. Take a snapshot.** Mandatory — your safety net.
+
+```bash
+./scripts/backup.sh
+# Note the filename it prints; you'll need it if you have to roll back.
+```
+
+**5. Delete inside a flagged transaction.**
+
+```bash
+$PSQL <<'SQL'
+BEGIN;
+SET LOCAL app.allow_audit_delete = 'true';
+DELETE FROM complaints WHERE reference_no = 'CMP-2026-000XXX';
+COMMIT;
+SQL
+```
+
+Expected output: `DELETE 1` then `COMMIT`. If you see `DELETE 0`,
+the WHERE clause didn't match — the transaction commits with no
+effect; no harm done.
+
+**6. Verify it's gone.**
+
+```bash
+$PSQL -c "SELECT id, reference_no FROM complaints
+           WHERE reference_no = 'CMP-2026-000XXX';"
+# Expected: (0 rows)
+```
+
+#### Troubleshooting deletion
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ERROR: permission denied: complaint_audit_log delete blocked` (or similar trigger error) | `SET LOCAL app.allow_audit_delete = 'true'` is missing, or you ran the DELETE in a different transaction than the `SET LOCAL`. | Re-run the whole `BEGIN; SET LOCAL ...; DELETE ...; COMMIT;` block as one heredoc. `SET LOCAL` only applies inside the same transaction. |
+| `ERROR: column "title" does not exist` (or any other column) | The schema doesn't have what you typed — `complaints` has no human-readable title, only `reference_no`. | Run `\d complaints` first to see the columns. The identifying field is always `reference_no` (e.g. `CMP-2026-000003`). |
+| Preview SELECT returns 0 rows | Wrong `reference_no`, or the complaint was already deleted. | Don't run DELETE. List recent complaints to find the right one: `SELECT reference_no, status, created_at FROM complaints ORDER BY created_at DESC LIMIT 20;` |
+| Preview SELECT returns more rows than expected | WHERE clause is too broad. | Narrow it down. Prefer `WHERE reference_no = '…'` (unique) over `WHERE created_by = …` or `WHERE status = '…'`. |
+| `DELETE 0` instead of `DELETE 1` | WHERE didn't match anything — transaction commits with no effect. | Harmless. Check the reference number and try again. |
+| `ssh cts-prod` hangs or "Permission denied" | Network from your workstation, or your SSH key isn't installed for the `claude` user on prod. | Confirm `~/.ssh/config` has a `Host cts-prod` entry pointing at 10.1.27.99. If a brand-new workstation, get your public key added to `claude@cts-prod:~/.ssh/authorized_keys` by an existing operator. |
+| `docker compose exec` says `no such service: db` | Wrong directory, or the stack isn't running on this host. | `cd /opt/complainmgmt` and `docker compose ps` to confirm the `db` container is up. |
+| `./scripts/backup.sh: Permission denied` | Running as a user that can't write to `backups/`. | Run as the `claude` user on prod (`sudo -iu claude` then `cd /opt/complainmgmt`). |
+| You ran DELETE but forgot `COMMIT;` | The transaction is still open — your psql session is holding a lock. | Type `COMMIT;` in the same session, or `ROLLBACK;` to undo. If you closed psql without committing, the deletion never happened. |
+| Need to undo a delete | Backup exists from step 4. | Restore from `backups/cts-<timestamp>.sql.gz` per `docs/10-production-runbook.md` § Rollback. The whole DB rolls back to the snapshot time, so any unrelated edits made after the backup are also lost — coordinate before restoring. |
+| `app.allow_audit_delete` setting "does not exist" | You're connected to a DB that hasn't run migration `0030` yet. | Check you're on prod (`ssh cts-prod`), not a stale local copy. Run `\dx` and `SELECT version()` to confirm. |
 
 ### Migrations that own this pattern
 
