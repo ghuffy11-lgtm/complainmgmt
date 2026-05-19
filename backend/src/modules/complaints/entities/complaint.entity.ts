@@ -46,6 +46,12 @@ export class ComplaintEntity {
   @Column({ name: 'complaint_date', type: 'date', nullable: true })
   complaintDate!: string | null;
 
+  @Column({ name: 'subcategory_id', type: 'bigint', nullable: true })
+  subcategoryId!: string | null;
+
+  @Column({ name: 'origin_id', type: 'bigint', nullable: true })
+  originId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

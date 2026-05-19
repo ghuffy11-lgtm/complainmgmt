@@ -8,12 +8,16 @@ import { LockingService } from './locking.service';
 import { ReferenceNumberService } from './reference-number.service';
 import { DynamicFieldsModule } from '../dynamic-fields/dynamic-fields.module';
 import { AssignmentsModule } from '../assignments/assignments.module';
+import { SubcategoriesModule } from '../subcategories/subcategories.module';
+import { OriginsModule } from '../origins/origins.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ComplaintEntity, ComplaintFieldValueEntity]),
     DynamicFieldsModule,
     AssignmentsModule,
+    SubcategoriesModule,
+    OriginsModule,
   ],
   providers: [ComplaintsService, LockingService, ReferenceNumberService],
   controllers: [ComplaintsController],

@@ -14,6 +14,8 @@ import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { SubcategoriesModule } from './modules/subcategories/subcategories.module';
+import { OriginsModule } from './modules/origins/origins.module';
 import { DynamicFieldsModule } from './modules/dynamic-fields/dynamic-fields.module';
 import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
@@ -48,6 +50,8 @@ import { DisplayNamesModule } from './modules/display-names/display-names.module
     RolesModule,
     PermissionsModule,
     DepartmentsModule,
+    SubcategoriesModule,
+    OriginsModule,
     DynamicFieldsModule,
     ComplaintsModule,
     AssignmentsModule,

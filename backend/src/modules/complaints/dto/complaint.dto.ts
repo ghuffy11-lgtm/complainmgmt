@@ -33,6 +33,13 @@ export class CreateComplaintDto {
    */
   @IsOptional() @IsString() @Matches(ISO_DATE_REGEX, ISO_DATE_MSG)
   complaintDate?: string;
+
+  /** Per-department refinement. Required when the chosen department has
+   *  ≥1 active sub-category; rejected when the dept has none. */
+  @IsOptional() @IsString() subcategoryId?: string;
+
+  /** Channel the complaint arrived through. Required on create. */
+  @IsString() originId!: string;
 }
 
 export class UpdateComplaintDto {
@@ -46,6 +53,17 @@ export class UpdateComplaintDto {
   @ValidateIf((_o, v) => v !== null)
   @IsString() @Matches(ISO_DATE_REGEX, ISO_DATE_MSG)
   complaintDate?: string | null;
+
+  /** Pass `null` to clear (only allowed when the dept has no active
+   *  sub-categories); omit to leave unchanged; pass a string to set. */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  subcategoryId?: string | null;
+
+  /** Set to a new origin. Explicit `null` is rejected — origin cannot
+   *  be cleared once set. */
+  @IsOptional() @IsString() originId?: string;
 }
 
 export class UpdateStatusDto {
