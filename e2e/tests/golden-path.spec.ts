@@ -41,6 +41,12 @@ test('admin can log in, create a complaint, and view it', async ({ page }) => {
   // Fill the seeded system field and submit
   const note = `e2e patient complaint ${Date.now()}`;
   await page.getByLabel(/Patient Complaint/).fill(note);
+  // Department is required at create — pick the first available.
+  await page.locator('div').filter({ hasText: /^Department/ }).getByRole('combobox').first().click();
+  await page.getByRole('option').first().click();
+  // Origin of complaint is required — pick the first seeded value.
+  await page.locator('div').filter({ hasText: /^Origin of complaint/ }).getByRole('combobox').first().click();
+  await page.getByRole('option').first().click();
   await page.getByRole('button', { name: /create complaint/i }).click();
 
   // Detail page shows the new complaint

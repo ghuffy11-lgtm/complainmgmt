@@ -357,3 +357,47 @@ The seed migration provisions:
   - Searchable number fields (`mobile_number`, `file_id`) seeded by 0015 with `digits` validators and per-field permissions wired into the role grid.
 - Departments: empty by default; admin populates per deployment.
 - Branding settings: seeded with the previously hardcoded copy so a fresh deploy looks the same as the pre-0019 build until an admin edits them.
+
+
+---
+
+## Sub-categories & Origins (2026-05-19)
+
+Two new tables shipped alongside the sub-category + origin feature
+(migrations `0031` + `0032`):
+
+### `department_subcategories`
+
+Per-department refinement of complaint classification. Cascades off
+`departments` (deleting a department wipes its subcat list). Selected
+on complaint create when the chosen department has ≥1 active subcat.
+
+| Column         | Type        | Notes                                  |
+|----------------|-------------|----------------------------------------|
+| id             | BIGSERIAL   | PK                                     |
+| department_id  | BIGINT      | FK → departments(id) ON DELETE CASCADE |
+| key            | TEXT        | UNIQUE within department               |
+| name           | TEXT        |                                        |
+| is_active      | BOOLEAN     | Inactive rows hidden from create form  |
+
+### `complaint_origins`
+
+Channel the complaint arrived through. Flat list; admin-managed via
+Admin → Origins. Seeded with `social_media`, `verbal`,
+`suggestion_box`.
+
+| Column      | Type      | Notes                            |
+|-------------|-----------|----------------------------------|
+| id          | BIGSERIAL | PK                               |
+| key         | TEXT      | UNIQUE                           |
+| name        | TEXT      |                                  |
+| is_active   | BOOLEAN   | Inactive rows hidden from picker |
+| sort_order  | INT       | Lower sorts first; auto-defaults |
+
+### `complaints` (new columns)
+
+| Column         | Type   | Notes                                              |
+|----------------|--------|----------------------------------------------------|
+| subcategory_id | BIGINT | nullable; FK → department_subcategories(id)        |
+| origin_id      | BIGINT | nullable in DB; required on create at the API tier |
+

@@ -253,3 +253,41 @@ This is **seeded** state — admins can change any of it via the admin panel.
 ## OpenAPI
 
 The backend serves `/api/docs` (Swagger UI) in non-production builds. The JSON spec is at `/api/docs-json` and is checked into the repo on each release as `docs/openapi.json`.
+
+## Sub-categories & Origins (2026-05-19)
+
+### Sub-categories
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| `GET` | `/api/departments/:id/subcategories` | any auth'd | list active+inactive subcats for one dept |
+| `POST` | `/api/departments/:id/subcategories` | `admin.departments:manage` | body `{ key, name }` (key lower-snake-case, unique per dept) |
+| `GET` | `/api/subcategories?departmentId=&active=` | any auth'd | flat list used by the list-page filter |
+| `PATCH` | `/api/subcategories/:id` | `admin.departments:manage` | body `{ name?, isActive? }` |
+
+### Origins
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| `GET` | `/api/origins` | any auth'd | full list ordered by `sort_order, name` |
+| `POST` | `/api/origins` | `admin.departments:manage` | body `{ key, name, sortOrder? }` — defaults `sortOrder` to `max+10` |
+| `PATCH` | `/api/origins/:id` | `admin.departments:manage` | body `{ name?, isActive?, sortOrder? }` |
+
+### Dashboard
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| `GET` | `/api/dashboard/by-origin` | `dashboard:read` / `dashboard.own:read` | returns `[{ originId, count }]`. `originId: null` is the legacy bucket. |
+
+### Complaint payload deltas
+
+`POST /api/complaints` and `PATCH /api/complaints/:id` accept two new fields:
+
+- `subcategoryId?: string | null`
+- `originId?: string`
+
+`originId` is **required on create**; explicit `null` on PATCH is rejected. `subcategoryId` is required iff the chosen department has ≥1 active sub-category; rejected if the department has none. On a cross-department reassign (`POST /:id/assign`) the server clears any stale `subcategoryId` automatically.
+
+Validation errors return `{ code: 'VALIDATION_FAILED', errors: { origin?: [...], subcategory?: [...] } }` with one of: `REQUIRED`, `NOT_ACTIVE`, `DEPT_MISMATCH_OR_INACTIVE`, `NOT_ALLOWED`, `NO_DEPARTMENT`.
+
+Origin and sub-category changes record audit rows with `fieldKey: '__origin__'` / `'__subcategory__'`.

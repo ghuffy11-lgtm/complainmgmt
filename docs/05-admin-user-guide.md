@@ -179,3 +179,34 @@ Notable actions you'll see in the timeline:
 6. **Users** — create accounts for staff. For each, pick the right role(s) and tick the department(s) they belong to. Star their primary department.
 7. Create your real human admin account, log in as them, and **deactivate the seeded admin** (don't delete — deletion orphans audit history).
 8. Walk one supervisor through creating a test complaint end-to-end so you've seen the full flow before users do.
+
+## Sub-categories
+
+Refinements of a department (e.g. *IT → Network, Application*).
+Admin → **Sub-categories**. Pick a department in the top picker, then
+add entries with a lower-snake-case key and a display name.
+
+Once at least one active sub-category exists for a department, the
+create-complaint form requires operators to pick one when filing
+against that department. Departments with zero active sub-categories
+simply skip the field on the form.
+
+Deactivating a sub-category hides it from the create form but keeps
+showing it on existing complaints that already reference it — same
+pattern departments use.
+
+## Origins of complaint
+
+The channel a complaint arrived through. Admin → **Origins**. The
+system seeds three (Social media, Verbal, Suggestion box); you may
+add more (e.g. *Email*, *Patient portal*).
+
+Every new complaint must pick an origin. The dashboard renders one
+clickable card per active origin; clicking jumps to the complaints
+list pre-filtered to that origin. Inactive origins are hidden from
+new-complaint pickers and from the dashboard (unless the inactive
+bucket has count > 0 of existing complaints, in which case it stays).
+
+The complaint list page gains an **Origin** filter chip; if a
+department is selected, a cascading **Sub-category** chip also
+appears.
