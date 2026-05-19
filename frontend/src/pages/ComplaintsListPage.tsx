@@ -4,6 +4,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { ComplaintsService, ListParams } from '../services/complaints.service';
 import { DepartmentsService } from '../services/departments.service';
+import { OriginsService } from '../services/origins.service';
+import { SubcategoriesService } from '../services/subcategories.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { useAuthStore } from '../store/auth-store';
 import { Button } from '../components/ui/Button';
@@ -41,6 +43,12 @@ export function ComplaintsListPage() {
   const nav = useNavigate();
   const { has } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const originsQ = useQuery({ queryKey: ['origins'], queryFn: () => OriginsService.list() });
+  const subcatsQ = useQuery({
+    queryKey: ['subcategories', filters.departmentId],
+    queryFn: () => SubcategoriesService.listForDepartment(filters.departmentId!),
+    enabled: !!filters.departmentId,
+  });
   // Scope the department dropdown to the user's active memberships when they
   // only have own-dept read access. Users with full `complaint:read` (admin /
   // manager) keep the full dropdown so they can drill into any dept.
@@ -121,7 +129,9 @@ export function ComplaintsListPage() {
   const draftDirty = !sameDraft(draft, pickDraft(filters));
   const hasFvFilter = filters.fv && Object.keys(filters.fv).length > 0;
   const hasAnyFilter =
-    !!(filters.q || filters.status || filters.priority || filters.departmentId || filters.dateFrom || filters.dateTo || hasFvFilter);
+    !!(filters.q || filters.status || filters.priority || filters.departmentId
+       || filters.originId || filters.subcategoryId
+       || filters.dateFrom || filters.dateTo || hasFvFilter);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.meta.total / data.meta.pageSize)) : 1;
 
@@ -195,6 +205,37 @@ export function ComplaintsListPage() {
             clearLabel="Any department"
             options={visibleDepartments.map((d) => ({ value: d.id, label: d.name }))}
           />
+
+          <Select
+            size="sm"
+            className="w-[170px]"
+            placeholder="Any origin"
+            value={filters.originId ?? ''}
+            onChange={(v) => apply({ originId: v || undefined })}
+            allowClear
+            clearLabel="Any origin"
+            options={[
+              ...((originsQ.data ?? [])
+                .filter((o) => o.isActive)
+                .map((o) => ({ value: o.id, label: o.name }))),
+              { value: 'none', label: '(Unknown)' },
+            ]}
+          />
+
+          {filters.departmentId && (subcatsQ.data ?? []).filter((s) => s.isActive).length > 0 && (
+            <Select
+              size="sm"
+              className="w-[170px]"
+              placeholder="Any sub-category"
+              value={filters.subcategoryId ?? ''}
+              onChange={(v) => apply({ subcategoryId: v || undefined })}
+              allowClear
+              clearLabel="Any sub-category"
+              options={(subcatsQ.data ?? [])
+                .filter((s) => s.isActive)
+                .map((s) => ({ value: s.id, label: s.name }))}
+            />
+          )}
 
           <DateRangeInput
             label="From"
@@ -416,6 +457,8 @@ function filtersFromQuery(sp: URLSearchParams): ListParams {
     priority: PRIORITIES.includes(priority as ComplaintPriority) ? priority : undefined,
     departmentId: get('departmentId'),
     assignedTo: get('assignedTo'),
+    originId: get('originId'),
+    subcategoryId: get('subcategoryId'),
     q: get('q'),
     dateFrom: get('dateFrom'),
     dateTo: get('dateTo'),
@@ -452,6 +495,8 @@ function queryFromFilters(f: ListParams): Record<string, string> {
   if (f.priority) out.priority = f.priority;
   if (f.departmentId) out.departmentId = f.departmentId;
   if (f.assignedTo) out.assignedTo = f.assignedTo;
+  if (f.originId) out.originId = f.originId;
+  if (f.subcategoryId) out.subcategoryId = f.subcategoryId;
   if (f.q) out.q = f.q;
   if (f.dateFrom) out.dateFrom = f.dateFrom;
   if (f.dateTo) out.dateTo = f.dateTo;

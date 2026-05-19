@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { DashboardService } from '../services/dashboard.service';
 import { DepartmentsService } from '../services/departments.service';
+import { OriginsService } from '../services/origins.service';
 import type { Branding } from '../services/branding.service';
 import { usePermissions } from '../hooks/usePermissions';
 import { useBranding } from '../hooks/useBranding';
@@ -131,7 +132,12 @@ function ManagerDashboard() {
     queryKey: ['dashboard', 'by-department', departmentId],
     queryFn: () => DashboardService.byDepartment(deptScope),
   });
+  const byOriginQ = useQuery({
+    queryKey: ['dashboard', 'by-origin', departmentId],
+    queryFn: () => DashboardService.byOrigin(deptScope),
+  });
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const originsQ = useQuery({ queryKey: ['origins'], queryFn: () => OriginsService.list() });
   const agingQ = useQuery({
     queryKey: ['dashboard', 'aging', departmentId],
     queryFn: () => DashboardService.aging(deptScope),
@@ -234,6 +240,38 @@ function ManagerDashboard() {
           primary={primary}
         />
       </div>
+
+      {/* Origin of complaint */}
+      <Card title="Origin of complaint" subtitle="Channel the complaint arrived through">
+        {byOriginQ.isLoading && <p className="muted">Loading…</p>}
+        {!byOriginQ.isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(byOriginQ.data ?? []).map((row) => {
+              const origin = originsQ.data?.find((o) => String(o.id) === String(row.originId));
+              if (!origin && row.originId !== null) return null;
+              if (!origin && row.count === 0) return null;
+              if (origin && !origin.isActive && row.count === 0) return null;
+              const name = origin ? origin.name : 'Unknown';
+              const q = new URLSearchParams();
+              q.set('originId', origin ? origin.id : 'none');
+              if (departmentId) q.set('departmentId', departmentId);
+              return (
+                <Link
+                  key={row.originId ?? 'none'}
+                  to={`/complaints?${q.toString()}`}
+                  className="block p-4 rounded-md border border-border bg-surface hover:shadow-md transition-shadow no-print"
+                >
+                  <div className="text-xs text-text-muted">{name}</div>
+                  <div className="text-2xl font-bold text-text-main mt-1">{row.count}</div>
+                </Link>
+              );
+            })}
+            {(byOriginQ.data ?? []).length === 0 && (
+              <p className="muted col-span-full">No complaints yet.</p>
+            )}
+          </div>
+        )}
+      </Card>
 
       {/* Department + Aging */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -351,6 +389,11 @@ function UserDashboard() {
     queryKey: ['dashboard', 'aging', 'mine', departmentId],
     queryFn: () => DashboardService.aging(deptScope),
   });
+  const byOriginQ = useQuery({
+    queryKey: ['dashboard', 'by-origin', 'mine', departmentId],
+    queryFn: () => DashboardService.byOrigin(deptScope),
+  });
+  const originsQ = useQuery({ queryKey: ['origins'], queryFn: () => OriginsService.list() });
 
   // Same TimeWindow shape as the manager dashboard so the picker's
   // "Specific month…" entry actually does something. UserDashboard
@@ -461,6 +504,35 @@ function UserDashboard() {
           primary={primary}
         />
       </div>
+
+      <Card title="Origin of complaint" subtitle="Channel the complaint arrived through">
+        {byOriginQ.isLoading && <p className="muted">Loading…</p>}
+        {!byOriginQ.isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(byOriginQ.data ?? []).map((row) => {
+              const origin = originsQ.data?.find((o) => String(o.id) === String(row.originId));
+              if (!origin && row.originId !== null) return null;
+              if (!origin && row.count === 0) return null;
+              if (origin && !origin.isActive && row.count === 0) return null;
+              const name = origin ? origin.name : 'Unknown';
+              const url = `${linkBase}${sep}originId=${origin ? origin.id : 'none'}`;
+              return (
+                <Link
+                  key={row.originId ?? 'none'}
+                  to={url}
+                  className="block p-4 rounded-md border border-border bg-surface hover:shadow-md transition-shadow no-print"
+                >
+                  <div className="text-xs text-text-muted">{name}</div>
+                  <div className="text-2xl font-bold text-text-main mt-1">{row.count}</div>
+                </Link>
+              );
+            })}
+            {(byOriginQ.data ?? []).length === 0 && (
+              <p className="muted col-span-full">No complaints yet.</p>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card title="Open complaint aging">
         {agingQ.isLoading && <p className="muted">Loading…</p>}

@@ -34,6 +34,9 @@ type ListFilters = {
   priority?: ComplaintPriority;
   assignedTo?: string;
   departmentId?: string;
+  /** Origin filter. `'none'` matches legacy rows where origin_id IS NULL. */
+  originId?: string;
+  subcategoryId?: string;
   q?: string;
   /** Inclusive lower bound on complaint_date (YYYY-MM-DD). */
   dateFrom?: string;
@@ -164,6 +167,14 @@ export class ComplaintsService {
     if (filters.priority) qb.andWhere('c.priority = :priority', { priority: filters.priority });
     if (filters.assignedTo) qb.andWhere('c.assigned_to = :assignedTo', { assignedTo: filters.assignedTo });
     if (filters.departmentId) qb.andWhere('c.assigned_department_id = :dept', { dept: filters.departmentId });
+    if (filters.originId === 'none') {
+      qb.andWhere('c.origin_id IS NULL');
+    } else if (filters.originId) {
+      qb.andWhere('c.origin_id = :originId', { originId: filters.originId });
+    }
+    if (filters.subcategoryId) {
+      qb.andWhere('c.subcategory_id = :subcategoryId', { subcategoryId: filters.subcategoryId });
+    }
     if (filters.q) qb.andWhere('c.reference_no ILIKE :q', { q: `%${filters.q}%` });
     if (filters.dateFrom) qb.andWhere('c.complaint_date >= :dateFrom', { dateFrom: filters.dateFrom });
     if (filters.dateTo) qb.andWhere('c.complaint_date <= :dateTo', { dateTo: filters.dateTo });
