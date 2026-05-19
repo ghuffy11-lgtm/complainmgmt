@@ -71,6 +71,12 @@ export type Complaint = {
   assignedAt: string | null;
   /** Operator-supplied event date (YYYY-MM-DD), null until first set. */
   complaintDate: string | null;
+  /** Per-department refinement, null when dept has no active subcats or
+   *  this is a legacy row. */
+  subcategoryId: string | null;
+  /** Channel the complaint arrived through. Null only on legacy rows;
+   *  required for all new complaints. */
+  originId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -172,6 +178,26 @@ export type Department = {
   key: string;
   name: string;
   isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Subcategory = {
+  id: string;
+  departmentId: string;
+  key: string;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Origin = {
+  id: string;
+  key: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };

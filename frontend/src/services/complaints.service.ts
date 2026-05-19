@@ -17,6 +17,9 @@ export type ListParams = {
   priority?: ComplaintPriority;
   assignedTo?: string;
   departmentId?: string;
+  /** Origin filter. `'none'` = legacy rows with NULL origin_id. */
+  originId?: string;
+  subcategoryId?: string;
   q?: string;
   /** YYYY-MM-DD inclusive bounds on `complaint_date`. */
   dateFrom?: string;
@@ -50,10 +53,20 @@ export const ComplaintsService = {
     assignmentNote?: string;
     /** Operator-supplied event date, YYYY-MM-DD. */
     complaintDate?: string;
+    originId: string;
+    subcategoryId?: string;
   }) {
     return api.post<ComplaintDetail>('/complaints', body).then((r) => r.data);
   },
-  update(id: string, body: { values?: Record<string, unknown>; complaintDate?: string | null }) {
+  update(
+    id: string,
+    body: {
+      values?: Record<string, unknown>;
+      complaintDate?: string | null;
+      subcategoryId?: string | null;
+      originId?: string;
+    },
+  ) {
     return api.patch<ComplaintDetail>(`/complaints/${id}`, body).then((r) => r.data);
   },
   /**

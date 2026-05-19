@@ -51,6 +51,10 @@ export const DashboardService = {
     return api.get<{ departmentId: string | null; count: number }[]>('/dashboard/by-department', { params: opts })
       .then((r) => r.data);
   },
+  byOrigin(opts: ScopeOpts = {}) {
+    return api.get<{ originId: string | null; count: number }[]>('/dashboard/by-origin', { params: opts })
+      .then((r) => r.data);
+  },
   byDate(opts: WindowOpts & ScopeOpts = {}) {
     return api
       .get<{ days?: number; from?: string; to?: string; data: { date: string; count: number }[] }>(
