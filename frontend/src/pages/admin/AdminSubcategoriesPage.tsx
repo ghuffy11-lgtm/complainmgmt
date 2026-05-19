@@ -49,7 +49,7 @@ export function AdminSubcategoriesPage() {
     <Card className="p-0 overflow-hidden">
       <div className="p-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <h3 className="font-semibold text-text-main m-0">Sub-categories</h3>
+          <h3 className="font-semibold text-text-main m-0">Sub-departments</h3>
           <Select
             size="sm"
             className="w-[220px]"
@@ -60,7 +60,7 @@ export function AdminSubcategoriesPage() {
         </div>
         {canManage && deptId && (
           <Button size="sm" icon={<Plus size={14} />} onClick={() => setCreating(true)}>
-            New sub-category
+            New sub-department
           </Button>
         )}
       </div>
@@ -68,7 +68,7 @@ export function AdminSubcategoriesPage() {
       {subsQ.isLoading && <p className="muted p-4">Loading…</p>}
       {subsQ.data && subsQ.data.length === 0 && (
         <p className="muted p-4">
-          No sub-categories yet. New complaints for this department will skip the sub-category
+          No sub-departments yet. New complaints for this department will skip the sub-department
           step until you add one.
         </p>
       )}
@@ -139,7 +139,7 @@ function CreateModal({
     onError: (err) => toast.error(errorMessage(err)),
   });
   return (
-    <Modal open onClose={onClose} title="New sub-category" footer={
+    <Modal open onClose={onClose} title="New sub-department" footer={
       <>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <Button onClick={() => m.mutate()} disabled={m.isPending}>

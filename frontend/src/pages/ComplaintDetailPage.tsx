@@ -149,7 +149,7 @@ export function ComplaintDetailPage() {
       qc.invalidateQueries({ queryKey: ['complaint', id, 'audit'] });
       qc.invalidateQueries({ queryKey: ['complaints'] });
     },
-    onError: (err) => toast.error(errorMessage(err, 'Could not change sub-category')),
+    onError: (err) => toast.error(errorMessage(err, 'Could not change sub-department')),
   });
 
   if (!id) return <p>Missing complaint id.</p>;
@@ -196,7 +196,7 @@ export function ComplaintDetailPage() {
           <div className="text-[11px] text-[#555]">
             Origin: {originsQ.data?.find((o) => o.id === c.originId)?.name ?? '—'}
             {c.subcategoryId && (
-              <> · Sub-category: {subcatsQ.data?.find((s) => s.id === c.subcategoryId)?.name ?? '—'}</>
+              <> · Sub-department: {subcatsQ.data?.find((s) => s.id === c.subcategoryId)?.name ?? '—'}</>
             )}
           </div>
         </div>
@@ -330,7 +330,7 @@ export function ComplaintDetailPage() {
                   value={c.complaintDate ?? ''}
                   disabled={!canEdit}
                   max={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => complaintDateM.mutate(e.target.value || null)}
+                  onChange={(e) => { if (e.target.value) complaintDateM.mutate(e.target.value); }}
                 />
               </div>
               <div className="field">
@@ -349,7 +349,7 @@ export function ComplaintDetailPage() {
               </div>
               {(subcatsQ.data ?? []).filter((s) => s.isActive).length > 0 && (
                 <div className="field">
-                  <label className="text-[13px] font-medium text-text-main">Sub-category</label>
+                  <label className="text-[13px] font-medium text-text-main">Sub-department</label>
                   <Select
                     value={c.subcategoryId ?? ''}
                     disabled={!canEdit}

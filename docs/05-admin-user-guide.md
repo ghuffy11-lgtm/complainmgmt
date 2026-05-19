@@ -180,18 +180,18 @@ Notable actions you'll see in the timeline:
 7. Create your real human admin account, log in as them, and **deactivate the seeded admin** (don't delete — deletion orphans audit history).
 8. Walk one supervisor through creating a test complaint end-to-end so you've seen the full flow before users do.
 
-## Sub-categories
+## Sub-departments
 
 Refinements of a department (e.g. *IT → Network, Application*).
-Admin → **Sub-categories**. Pick a department in the top picker, then
+Admin → **Sub-departments**. Pick a department in the top picker, then
 add entries with a lower-snake-case key and a display name.
 
-Once at least one active sub-category exists for a department, the
+Once at least one active sub-department exists for a department, the
 create-complaint form requires operators to pick one when filing
-against that department. Departments with zero active sub-categories
+against that department. Departments with zero active sub-departments
 simply skip the field on the form.
 
-Deactivating a sub-category hides it from the create form but keeps
+Deactivating a sub-department hides it from the create form but keeps
 showing it on existing complaints that already reference it — same
 pattern departments use.
 
@@ -208,5 +208,5 @@ new-complaint pickers and from the dashboard (unless the inactive
 bucket has count > 0 of existing complaints, in which case it stays).
 
 The complaint list page gains an **Origin** filter chip; if a
-department is selected, a cascading **Sub-category** chip also
+department is selected, a cascading **Sub-department** chip also
 appears.

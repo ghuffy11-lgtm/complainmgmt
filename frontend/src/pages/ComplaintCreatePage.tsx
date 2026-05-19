@@ -236,7 +236,7 @@ export function ComplaintCreatePage() {
                 Department <span className="text-danger">*</span>
               </label>
               <Select
-                placeholder="Pick a department / sub-category"
+                placeholder="Pick a department / sub-department"
                 value={deptSubcatValue}
                 onChange={handleDeptSubcatChange}
                 options={deptSubcatOptions}
