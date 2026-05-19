@@ -70,6 +70,14 @@ export class AssignmentsService {
     complaint.assignedTo = newUser;
     complaint.assignedBy = String(actor.id);
     complaint.assignedAt = new Date();
+
+    // If the department is changing, any existing sub-category may no
+    // longer belong to the new dept. Clear it pre-emptively; if the new
+    // dept needs one, the operator will set it via PATCH /:id afterward.
+    if (String(oldDept ?? '') !== String(newDept ?? '') && complaint.subcategoryId != null) {
+      complaint.subcategoryId = null;
+    }
+
     await em.getRepository(ComplaintEntity).save(complaint);
 
     await em.getRepository(AssignmentHistoryEntity).insert({

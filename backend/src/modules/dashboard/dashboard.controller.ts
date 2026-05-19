@@ -122,6 +122,18 @@ export class DashboardController {
     ).getRawMany<{ departmentId: string | null; count: number }>();
   }
 
+  @Get('by-origin')
+  @RequireAnyPermission('dashboard:read', 'dashboard.own:read')
+  byOrigin(@CurrentUser() actor: AuthUser, @Query('departmentId') departmentId?: string) {
+    const dept = this.resolveScope(actor, departmentId);
+    return this.scoped(
+      this.complaints.createQueryBuilder('c')
+        .select('c.origin_id', 'originId').addSelect('COUNT(*)::int', 'count')
+        .groupBy('c.origin_id'),
+      dept,
+    ).getRawMany<{ originId: string | null; count: number }>();
+  }
+
   @Get('by-date')
   @RequireAnyPermission('dashboard:read', 'dashboard.own:read')
   async byDate(
