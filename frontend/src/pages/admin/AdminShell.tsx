@@ -25,6 +25,8 @@ export function AdminShell() {
         {has('admin.users:read') && <NavLink to="users" className={tabClass}>Users</NavLink>}
         {has('admin.roles:read') && <NavLink to="roles" className={tabClass}>Roles</NavLink>}
         {has('admin.departments:manage') && <NavLink to="departments" className={tabClass}>Departments</NavLink>}
+        {has('admin.departments:manage') && <NavLink to="subcategories" className={tabClass}>Sub-categories</NavLink>}
+        {has('admin.departments:manage') && <NavLink to="origins" className={tabClass}>Origins</NavLink>}
         {has('admin.fields:manage') && <NavLink to="fields" className={tabClass}>Fields</NavLink>}
         {has('admin.settings:manage') && <NavLink to="settings" className={tabClass}>Settings</NavLink>}
         {has('audit:read') && <NavLink to="audit" className={tabClass}>Audit</NavLink>}

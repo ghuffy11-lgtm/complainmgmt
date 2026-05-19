@@ -9,6 +9,8 @@ import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminRolesPage } from './pages/admin/AdminRolesPage';
 import { AdminFieldsPage } from './pages/admin/AdminFieldsPage';
 import { AdminDepartmentsPage } from './pages/admin/AdminDepartmentsPage';
+import { AdminSubcategoriesPage } from './pages/admin/AdminSubcategoriesPage';
+import { AdminOriginsPage } from './pages/admin/AdminOriginsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 import { AdminAuditPage } from './pages/admin/AdminAuditPage';
 import { AdminLoginActivityPage } from './pages/admin/AdminLoginActivityPage';
@@ -62,6 +64,8 @@ export function App() {
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="roles" element={<AdminRolesPage />} />
           <Route path="departments" element={<AdminDepartmentsPage />} />
+          <Route path="subcategories" element={<AdminSubcategoriesPage />} />
+          <Route path="origins" element={<AdminOriginsPage />} />
           <Route path="fields" element={<AdminFieldsPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
           <Route path="audit" element={<AdminAuditPage />} />
