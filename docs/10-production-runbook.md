@@ -197,7 +197,7 @@ BACKUP_DIR=/var/lib/docker/cts-backups ./scripts/backup.sh
 ls -lah /var/lib/docker/cts-backups/
 ```
 
-You should see a fresh `.sql.gz` dump. The script handles its own retention. Copy these off the server to a separate location (S3, NAS, second VM) periodically — backups on the same physical machine don't survive a disk or host failure.
+You should see two fresh files: a `cts-<TS>.sql.gz` dump (DB content, including attachments and the logo — both stored as `bytea` in postgres) and a `cts-config-<TS>.tar.gz` (`.env` + `nginx/certs/`, mode 600). The config tarball is tiny but load-bearing — losing `.env` makes every encrypted 2FA secret in the DB undecryptable. The script handles its own retention. Copy these off the server to a separate location (S3, NAS, second VM) periodically — backups on the same physical machine don't survive a disk or host failure.
 
 ## 9. Open it to users
 

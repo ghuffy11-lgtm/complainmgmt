@@ -386,6 +386,32 @@ If the share is unreachable, the **local** backup at
 the mirror failure but exits 0. Investigate the share, then re-run
 the cron command manually as root once it's back.
 
+### What's in each backup
+
+Every nightly run writes **two** files with matching timestamps:
+
+| File | Contents | Mode |
+|---|---|---|
+| `cts-<TS>.sql.gz` | pg_dump of everything in postgres — complaint data, users, attachments (`bytea`), logo (`bytea`), system settings, audit logs. Roughly 16 MB at current volume. | 644 |
+| `cts-config-<TS>.tar.gz` | `.env` + `nginx/certs/`. ~6 KB. Mode 600 because `.env` has `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, `POSTGRES_PASSWORD` in cleartext. | 600 |
+
+The frontend and backend source are NOT backed up — they're stateless Docker images built from git. To restore: this repo at the matching commit + the DB dump + the config tarball.
+
+### Restoring the config tarball
+
+```bash
+ssh cts-prod
+cd /opt/complainmgmt
+# inspect first
+tar -tzf backups/cts-config-<TS>.tar.gz
+# extract over the running tree (overwrites .env and nginx/certs/)
+tar -xzf backups/cts-config-<TS>.tar.gz
+chmod 600 .env
+docker compose up -d --build backend frontend     # pick up the new .env
+```
+
+If `.env` is restored to a new host AND the DB is restored from the same timestamp, all encrypted 2FA secrets work again. Mixing `.env` from time A with DB from time B will work for everything *except* 2FA enrollments that were created between A and B (their TOTP secrets were encrypted with the newer key).
+
 ---
 
 ## Department naming convention
