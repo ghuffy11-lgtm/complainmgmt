@@ -353,13 +353,13 @@ export function ComplaintDetailPage() {
                   <Select
                     value={c.subcategoryId ?? ''}
                     disabled={!canEdit}
-                    onChange={(v) => subcatM.mutate(v || null)}
+                    onChange={(v) => v && subcatM.mutate(v)}
                     options={(subcatsQ.data ?? [])
                       .filter((s) => s.isActive || s.id === c.subcategoryId)
-                      .map((s) => ({
-                        value: s.id,
-                        label: s.isActive ? s.name : `${s.name} (inactive)`,
-                      }))}
+                      .map((s) => {
+                        const base = s.isActive ? s.name : `${s.name} (inactive)`;
+                        return { value: s.id, label: `${deptName(c.assignedDepartmentId)}: ${base}` };
+                      })}
                   />
                 </div>
               )}

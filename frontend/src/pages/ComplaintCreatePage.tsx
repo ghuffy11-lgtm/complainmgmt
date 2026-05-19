@@ -223,7 +223,10 @@ export function ComplaintCreatePage() {
                 onChange={setSubcategoryId}
                 options={(subcatsQ.data ?? [])
                   .filter((s) => s.isActive)
-                  .map((s) => ({ value: s.id, label: s.name }))}
+                  .map((s) => {
+                    const dName = (departmentsQ.data ?? []).find((d) => d.id === departmentId)?.name ?? '';
+                    return { value: s.id, label: dName ? `${dName}: ${s.name}` : s.name };
+                  })}
               />
               {errors.subcategory && (
                 <span className="text-danger text-xs">{errors.subcategory.join(', ')}</span>

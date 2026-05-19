@@ -233,7 +233,10 @@ export function ComplaintsListPage() {
               clearLabel="Any sub-category"
               options={(subcatsQ.data ?? [])
                 .filter((s) => s.isActive)
-                .map((s) => ({ value: s.id, label: s.name }))}
+                .map((s) => {
+                  const dName = (departmentsQ.data ?? []).find((d) => d.id === filters.departmentId)?.name ?? '';
+                  return { value: s.id, label: dName ? `${dName}: ${s.name}` : s.name };
+                })}
             />
           )}
 

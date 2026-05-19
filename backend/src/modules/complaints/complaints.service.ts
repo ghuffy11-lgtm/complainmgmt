@@ -755,6 +755,8 @@ export class ComplaintsService {
       complaintDate: c.complaintDate,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
+      originId: c.originId ?? null,
+      subcategoryId: c.subcategoryId ?? null,
       values: valuesOut,
       locks,
     };

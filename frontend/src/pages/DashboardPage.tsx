@@ -256,14 +256,13 @@ function ManagerDashboard() {
               q.set('originId', origin ? origin.id : 'none');
               if (departmentId) q.set('departmentId', departmentId);
               return (
-                <Link
+                <KpiLink
                   key={row.originId ?? 'none'}
                   to={`/complaints?${q.toString()}`}
-                  className="block p-4 rounded-md border border-border bg-surface hover:shadow-md transition-shadow no-print"
-                >
-                  <div className="text-xs text-text-muted">{name}</div>
-                  <div className="text-2xl font-bold text-text-main mt-1">{row.count}</div>
-                </Link>
+                  label={name}
+                  value={row.count}
+                  emphasis={origin ? 'primary' : undefined}
+                />
               );
             })}
             {(byOriginQ.data ?? []).length === 0 && (
@@ -517,14 +516,13 @@ function UserDashboard() {
               const name = origin ? origin.name : 'Unknown';
               const url = `${linkBase}${sep}originId=${origin ? origin.id : 'none'}`;
               return (
-                <Link
+                <KpiLink
                   key={row.originId ?? 'none'}
                   to={url}
-                  className="block p-4 rounded-md border border-border bg-surface hover:shadow-md transition-shadow no-print"
-                >
-                  <div className="text-xs text-text-muted">{name}</div>
-                  <div className="text-2xl font-bold text-text-main mt-1">{row.count}</div>
-                </Link>
+                  label={name}
+                  value={row.count}
+                  emphasis={origin ? 'primary' : undefined}
+                />
               );
             })}
             {(byOriginQ.data ?? []).length === 0 && (
