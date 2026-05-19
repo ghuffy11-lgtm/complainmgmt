@@ -43,7 +43,9 @@ Only NGINX exposes ports to the host. The backend and frontend are unreachable f
 | 11 | **Dashboard** | Aggregated counts/breakdowns. `dashboard:read` sees everything; `dashboard.own:read` scopes to the caller's active department memberships. |
 | 12 | **Admin** | Endpoints/views to manage users, roles, permissions, fields, departments, settings. |
 | 13 | **Branding** | Single-row `branding_assets` table for the logo + `branding.*` keys in `system_settings`. Public `/api/branding` (no auth) drives the login page; admin upload/replace/clear under `/api/admin/branding`. |
-| 14 | **Notifications** *(scaffold only)* | Pluggable transport (email/webhook); event-driven. |
+| 14 | **Sub-departments** | Optional per-department classifier (`department_subcategories`). Required at complaint create when the chosen department has ≥ 1 active sub-dept; hidden otherwise. Cross-dept reassignment clears the previous sub-dept. |
+| 15 | **Origins** | Channel a complaint arrived through (`complaint_origins`). Flat admin-managed list, seeded with 3 defaults. Required on every create; filterable on list; surfaced as colored cards on the dashboard. |
+| 16 | **Notifications** *(scaffold only)* | Pluggable transport (email/webhook); event-driven. |
 
 ## Cross-cutting concerns
 
