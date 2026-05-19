@@ -44,16 +44,50 @@ export function ComplaintCreatePage() {
   const [originId, setOriginId] = React.useState('');
   const [subcategoryId, setSubcategoryId] = React.useState('');
 
-  const subcatsQ = useQuery({
-    queryKey: ['subcategories', departmentId],
-    queryFn: () => SubcategoriesService.listForDepartment(departmentId),
-    enabled: !!departmentId,
+  const allSubcatsQ = useQuery({
+    queryKey: ['subcategories', 'all-active'],
+    queryFn: () => SubcategoriesService.list({ active: true }),
   });
-  // Clear sub-category when department changes — it may belong to a
-  // different department under the new selection.
-  React.useEffect(() => {
-    setSubcategoryId('');
-  }, [departmentId]);
+
+  const deptSubcatOptions = React.useMemo(() => {
+    const activeSubsByDept = new Map<string, { id: string; departmentId: string; name: string }[]>();
+    for (const s of allSubcatsQ.data ?? []) {
+      const list = activeSubsByDept.get(s.departmentId) ?? [];
+      list.push(s);
+      activeSubsByDept.set(s.departmentId, list);
+    }
+    const opts: { value: string; label: string; group?: string }[] = [];
+    for (const dept of (departmentsQ.data ?? []).filter((d) => d.isActive)) {
+      const subs = activeSubsByDept.get(String(dept.id)) ?? [];
+      if (subs.length === 0) {
+        opts.push({ value: `d_${dept.id}`, label: dept.name });
+      } else {
+        for (const s of subs) {
+          opts.push({ value: `s_${s.id}`, label: s.name, group: dept.name });
+        }
+      }
+    }
+    return opts;
+  }, [departmentsQ.data, allSubcatsQ.data]);
+
+  const deptSubcatValue = subcategoryId
+    ? `s_${subcategoryId}`
+    : departmentId
+    ? `d_${departmentId}`
+    : '';
+
+  const handleDeptSubcatChange = (v: string) => {
+    if (v.startsWith('s_')) {
+      const sub = (allSubcatsQ.data ?? []).find((s) => s.id === v.slice(2));
+      if (sub) { setDepartmentId(sub.departmentId); setSubcategoryId(sub.id); }
+    } else if (v.startsWith('d_')) {
+      setDepartmentId(v.slice(2));
+      setSubcategoryId('');
+    } else {
+      setDepartmentId('');
+      setSubcategoryId('');
+    }
+  };
 
   // Cascade: assignee list narrows to active members of the chosen
   // department. The backend rejects mismatches; this just hides the
@@ -202,37 +236,16 @@ export function ComplaintCreatePage() {
                 Department <span className="text-danger">*</span>
               </label>
               <Select
-                placeholder="Pick a department"
-                value={departmentId}
-                onChange={setDepartmentId}
-                options={(departmentsQ.data ?? [])
-                  .filter((d) => d.isActive)
-                  .map((d) => ({ value: d.id, label: d.name }))}
-              />
-            </div>
-          </div>
-
-          {departmentId && (subcatsQ.data ?? []).filter((s) => s.isActive).length > 0 && (
-            <div className="field">
-              <label className="text-[13px] font-medium text-text-main">
-                Sub-category <span className="text-danger">*</span>
-              </label>
-              <Select
-                placeholder="Pick a sub-category"
-                value={subcategoryId}
-                onChange={setSubcategoryId}
-                options={(subcatsQ.data ?? [])
-                  .filter((s) => s.isActive)
-                  .map((s) => {
-                    const dName = (departmentsQ.data ?? []).find((d) => d.id === departmentId)?.name ?? '';
-                    return { value: s.id, label: dName ? `${dName}: ${s.name}` : s.name };
-                  })}
+                placeholder="Pick a department / sub-category"
+                value={deptSubcatValue}
+                onChange={handleDeptSubcatChange}
+                options={deptSubcatOptions}
               />
               {errors.subcategory && (
                 <span className="text-danger text-xs">{errors.subcategory.join(', ')}</span>
               )}
             </div>
-          )}
+          </div>
 
           <div className="field">
             <label className="text-[13px] font-medium text-text-main">

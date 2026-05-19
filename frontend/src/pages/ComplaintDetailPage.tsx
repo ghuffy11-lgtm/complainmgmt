@@ -356,10 +356,10 @@ export function ComplaintDetailPage() {
                     onChange={(v) => v && subcatM.mutate(v)}
                     options={(subcatsQ.data ?? [])
                       .filter((s) => s.isActive || s.id === c.subcategoryId)
-                      .map((s) => {
-                        const base = s.isActive ? s.name : `${s.name} (inactive)`;
-                        return { value: s.id, label: `${deptName(c.assignedDepartmentId)}: ${base}` };
-                      })}
+                      .map((s) => ({
+                        value: s.id,
+                        label: s.isActive ? s.name : `${s.name} (inactive)`,
+                      }))}
                   />
                 </div>
               )}

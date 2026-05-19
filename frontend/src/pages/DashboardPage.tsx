@@ -64,6 +64,7 @@ function buildPriorityColors(primary: string): Record<string, string> {
 }
 
 const AGING_COLORS = [SUCCESS, WARN, DANGER, '#7f1d1d'];
+const ORIGIN_COLORS = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#14b8a6', '#f59e0b', '#ef4444'];
 
 export function DashboardPage() {
   const { has, user } = usePermissions();
@@ -255,14 +256,22 @@ function ManagerDashboard() {
               const q = new URLSearchParams();
               q.set('originId', origin ? origin.id : 'none');
               if (departmentId) q.set('departmentId', departmentId);
+              const color = origin
+                ? ORIGIN_COLORS[(byOriginQ.data ?? []).indexOf(row) % ORIGIN_COLORS.length]
+                : '#94a3b8';
               return (
-                <KpiLink
+                <Link
                   key={row.originId ?? 'none'}
                   to={`/complaints?${q.toString()}`}
-                  label={name}
-                  value={row.count}
-                  emphasis={origin ? 'primary' : undefined}
-                />
+                  className="block transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-[10px]"
+                >
+                  <div className="p-5 bg-surface border border-border rounded-[10px] shadow-sm" style={{ borderLeft: `4px solid ${color}` }}>
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color }}>{name}</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold tabular-nums tracking-tight" style={{ color }}>{row.count}</span>
+                    </div>
+                  </div>
+                </Link>
               );
             })}
             {(byOriginQ.data ?? []).length === 0 && (
@@ -515,14 +524,22 @@ function UserDashboard() {
               if (origin && !origin.isActive && row.count === 0) return null;
               const name = origin ? origin.name : 'Unknown';
               const url = `${linkBase}${sep}originId=${origin ? origin.id : 'none'}`;
+              const color = origin
+                ? ORIGIN_COLORS[(byOriginQ.data ?? []).indexOf(row) % ORIGIN_COLORS.length]
+                : '#94a3b8';
               return (
-                <KpiLink
+                <Link
                   key={row.originId ?? 'none'}
                   to={url}
-                  label={name}
-                  value={row.count}
-                  emphasis={origin ? 'primary' : undefined}
-                />
+                  className="block transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-[10px]"
+                >
+                  <div className="p-5 bg-surface border border-border rounded-[10px] shadow-sm" style={{ borderLeft: `4px solid ${color}` }}>
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color }}>{name}</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold tabular-nums tracking-tight" style={{ color }}>{row.count}</span>
+                    </div>
+                  </div>
+                </Link>
               );
             })}
             {(byOriginQ.data ?? []).length === 0 && (

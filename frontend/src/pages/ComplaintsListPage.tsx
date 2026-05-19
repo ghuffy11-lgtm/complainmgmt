@@ -44,10 +44,9 @@ export function ComplaintsListPage() {
   const { has } = usePermissions();
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
   const originsQ = useQuery({ queryKey: ['origins'], queryFn: () => OriginsService.list() });
-  const subcatsQ = useQuery({
-    queryKey: ['subcategories', filters.departmentId],
-    queryFn: () => SubcategoriesService.listForDepartment(filters.departmentId!),
-    enabled: !!filters.departmentId,
+  const allSubcatsQ = useQuery({
+    queryKey: ['subcategories', 'all-active'],
+    queryFn: () => SubcategoriesService.list({ active: true }),
   });
   // Scope the department dropdown to the user's active memberships when they
   // only have own-dept read access. Users with full `complaint:read` (admin /
@@ -61,6 +60,46 @@ export function ComplaintsListPage() {
     const all = departmentsQ.data ?? [];
     return fullRead ? all : all.filter((d) => userDeptIds.has(String(d.id)));
   }, [departmentsQ.data, fullRead, userDeptIds]);
+
+  const deptSubcatOptions = React.useMemo(() => {
+    const activeSubsByDept = new Map<string, { id: string; departmentId: string; name: string }[]>();
+    for (const s of allSubcatsQ.data ?? []) {
+      const list = activeSubsByDept.get(s.departmentId) ?? [];
+      list.push(s);
+      activeSubsByDept.set(s.departmentId, list);
+    }
+    const opts: { value: string; label: string; group?: string }[] = [];
+    for (const dept of visibleDepartments) {
+      const subs = activeSubsByDept.get(String(dept.id)) ?? [];
+      if (subs.length === 0) {
+        opts.push({ value: `d_${dept.id}`, label: dept.name });
+      } else {
+        opts.push({ value: `d_${dept.id}`, label: 'All', group: dept.name });
+        for (const s of subs) {
+          opts.push({ value: `s_${s.id}`, label: s.name, group: dept.name });
+        }
+      }
+    }
+    return opts;
+  }, [visibleDepartments, allSubcatsQ.data]);
+
+  const deptSubcatValue = filters.subcategoryId
+    ? `s_${filters.subcategoryId}`
+    : filters.departmentId
+    ? `d_${filters.departmentId}`
+    : '';
+
+  const handleDeptSubcatChange = (v: string) => {
+    if (v.startsWith('s_')) {
+      const sub = (allSubcatsQ.data ?? []).find((s) => s.id === v.slice(2));
+      if (sub) apply({ departmentId: sub.departmentId, subcategoryId: sub.id });
+    } else if (v.startsWith('d_')) {
+      apply({ departmentId: v.slice(2), subcategoryId: undefined });
+    } else {
+      apply({ departmentId: undefined, subcategoryId: undefined });
+    }
+  };
+
   const fieldsQ = useQuery({ queryKey: ['dynamic-fields'], queryFn: () => DynamicFieldsService.list() });
   const searchableFields = (fieldsQ.data ?? []).filter(
     (f) => f.isSearchable && f.isActive && (f.type === 'text' || f.type === 'number' || f.type === 'dropdown'),
@@ -197,13 +236,13 @@ export function ComplaintsListPage() {
 
           <Select
             size="sm"
-            className="w-[170px]"
+            className="w-[200px]"
             placeholder="Any department"
-            value={filters.departmentId ?? ''}
-            onChange={(v) => apply({ departmentId: v || undefined })}
+            value={deptSubcatValue}
+            onChange={handleDeptSubcatChange}
             allowClear
             clearLabel="Any department"
-            options={visibleDepartments.map((d) => ({ value: d.id, label: d.name }))}
+            options={deptSubcatOptions}
           />
 
           <Select
@@ -221,24 +260,6 @@ export function ComplaintsListPage() {
               { value: 'none', label: '(Unknown)' },
             ]}
           />
-
-          {filters.departmentId && (subcatsQ.data ?? []).filter((s) => s.isActive).length > 0 && (
-            <Select
-              size="sm"
-              className="w-[170px]"
-              placeholder="Any sub-category"
-              value={filters.subcategoryId ?? ''}
-              onChange={(v) => apply({ subcategoryId: v || undefined })}
-              allowClear
-              clearLabel="Any sub-category"
-              options={(subcatsQ.data ?? [])
-                .filter((s) => s.isActive)
-                .map((s) => {
-                  const dName = (departmentsQ.data ?? []).find((d) => d.id === filters.departmentId)?.name ?? '';
-                  return { value: s.id, label: dName ? `${dName}: ${s.name}` : s.name };
-                })}
-            />
-          )}
 
           <DateRangeInput
             label="From"
