@@ -5,6 +5,8 @@ import { ArrowLeft, Check, Paperclip, Plus, X } from 'lucide-react';
 import { ComplaintsService } from '../services/complaints.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { DepartmentsService } from '../services/departments.service';
+import { OriginsService } from '../services/origins.service';
+import { SubcategoriesService } from '../services/subcategories.service';
 import { UsersService } from '../services/users.service';
 import { DynamicFieldRenderer } from '../components/DynamicFieldRenderer';
 import { Button } from '../components/ui/Button';
@@ -32,12 +34,26 @@ export function ComplaintCreatePage() {
 
   const fieldsQ = useQuery({ queryKey: ['dynamic-fields'], queryFn: () => DynamicFieldsService.list() });
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const originsQ = useQuery({ queryKey: ['origins'], queryFn: () => OriginsService.list() });
   const canSeeUsers = has('admin.users:read');
 
   const [values, setValues] = React.useState<Record<string, unknown>>({});
   const [priority, setPriority] = React.useState<ComplaintPriority>('normal');
   const [departmentId, setDepartmentId] = React.useState('');
   const [assignedTo, setAssignedTo] = React.useState('');
+  const [originId, setOriginId] = React.useState('');
+  const [subcategoryId, setSubcategoryId] = React.useState('');
+
+  const subcatsQ = useQuery({
+    queryKey: ['subcategories', departmentId],
+    queryFn: () => SubcategoriesService.listForDepartment(departmentId),
+    enabled: !!departmentId,
+  });
+  // Clear sub-category when department changes — it may belong to a
+  // different department under the new selection.
+  React.useEffect(() => {
+    setSubcategoryId('');
+  }, [departmentId]);
 
   // Cascade: assignee list narrows to active members of the chosen
   // department. The backend rejects mismatches; this just hides the
@@ -84,6 +100,8 @@ export function ComplaintCreatePage() {
         departmentId: departmentId || undefined,
         assignedTo: assignedTo || undefined,
         complaintDate: complaintDate || undefined,
+        originId,
+        subcategoryId: subcategoryId || undefined,
       });
 
       const failures: string[] = [];
@@ -192,6 +210,42 @@ export function ComplaintCreatePage() {
                   .map((d) => ({ value: d.id, label: d.name }))}
               />
             </div>
+          </div>
+
+          {departmentId && (subcatsQ.data ?? []).filter((s) => s.isActive).length > 0 && (
+            <div className="field">
+              <label className="text-[13px] font-medium text-text-main">
+                Sub-category <span className="text-danger">*</span>
+              </label>
+              <Select
+                placeholder="Pick a sub-category"
+                value={subcategoryId}
+                onChange={setSubcategoryId}
+                options={(subcatsQ.data ?? [])
+                  .filter((s) => s.isActive)
+                  .map((s) => ({ value: s.id, label: s.name }))}
+              />
+              {errors.subcategory && (
+                <span className="text-danger text-xs">{errors.subcategory.join(', ')}</span>
+              )}
+            </div>
+          )}
+
+          <div className="field">
+            <label className="text-[13px] font-medium text-text-main">
+              Origin of complaint <span className="text-danger">*</span>
+            </label>
+            <Select
+              placeholder="Pick an origin"
+              value={originId}
+              onChange={setOriginId}
+              options={(originsQ.data ?? [])
+                .filter((o) => o.isActive)
+                .map((o) => ({ value: o.id, label: o.name }))}
+            />
+            {errors.origin && (
+              <span className="text-danger text-xs">{errors.origin.join(', ')}</span>
+            )}
           </div>
 
           {canSeeUsers && (

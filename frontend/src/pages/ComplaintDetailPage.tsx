@@ -5,6 +5,8 @@ import { ArrowLeft, Lock, Printer, RotateCcw, Save, UserPlus } from 'lucide-reac
 import { ComplaintsService } from '../services/complaints.service';
 import { DynamicFieldsService } from '../services/dynamic-fields.service';
 import { DepartmentsService } from '../services/departments.service';
+import { OriginsService } from '../services/origins.service';
+import { SubcategoriesService } from '../services/subcategories.service';
 import { DynamicFieldRenderer } from '../components/DynamicFieldRenderer';
 import { AssignmentDialog } from '../components/AssignmentDialog';
 import { ReopenDialog } from '../components/ReopenDialog';
@@ -49,6 +51,12 @@ export function ComplaintDetailPage() {
     enabled: !!id,
   });
   const departmentsQ = useQuery({ queryKey: ['departments'], queryFn: () => DepartmentsService.list() });
+  const originsQ = useQuery({ queryKey: ['origins'], queryFn: () => OriginsService.list() });
+  const subcatsQ = useQuery({
+    queryKey: ['subcategories', complaintQ.data?.assignedDepartmentId],
+    queryFn: () => SubcategoriesService.listForDepartment(complaintQ.data!.assignedDepartmentId!),
+    enabled: !!complaintQ.data?.assignedDepartmentId,
+  });
 
   const [draft, setDraft] = React.useState<Record<string, unknown>>({});
   const [errors, setErrors] = React.useState<Record<string, string[]>>({});
@@ -124,6 +132,26 @@ export function ComplaintDetailPage() {
     onError: (err) => toast.error(errorMessage(err, 'Could not save complaint date')),
   });
 
+  const originM = useMutation({
+    mutationFn: (next: string) => ComplaintsService.update(id, { originId: next }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['complaint', id] });
+      qc.invalidateQueries({ queryKey: ['complaint', id, 'audit'] });
+      qc.invalidateQueries({ queryKey: ['complaints'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Could not change origin')),
+  });
+  const subcatM = useMutation({
+    mutationFn: (next: string | null) => ComplaintsService.update(id, { subcategoryId: next }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['complaint', id] });
+      qc.invalidateQueries({ queryKey: ['complaint', id, 'audit'] });
+      qc.invalidateQueries({ queryKey: ['complaints'] });
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Could not change sub-category')),
+  });
+
   if (!id) return <p>Missing complaint id.</p>;
   if (complaintQ.isLoading || fieldsQ.isLoading) return <p className="text-text-muted">Loading…</p>;
   if (!complaintQ.data) return <p>Complaint not found.</p>;
@@ -164,6 +192,12 @@ export function ComplaintDetailPage() {
           <div className="text-base font-bold text-black">{c.referenceNo}</div>
           <div className="text-[11px] text-[#555]">
             Status: {titleize(c.status)} · Priority: {titleize(c.priority)}
+          </div>
+          <div className="text-[11px] text-[#555]">
+            Origin: {originsQ.data?.find((o) => o.id === c.originId)?.name ?? '—'}
+            {c.subcategoryId && (
+              <> · Sub-category: {subcatsQ.data?.find((s) => s.id === c.subcategoryId)?.name ?? '—'}</>
+            )}
           </div>
         </div>
       </div>
@@ -299,6 +333,36 @@ export function ComplaintDetailPage() {
                   onChange={(e) => complaintDateM.mutate(e.target.value || null)}
                 />
               </div>
+              <div className="field">
+                <label className="text-[13px] font-medium text-text-main">Origin of complaint</label>
+                <Select
+                  value={c.originId ?? ''}
+                  disabled={!canEdit}
+                  onChange={(v) => v && originM.mutate(v)}
+                  options={(originsQ.data ?? [])
+                    .filter((o) => o.isActive || o.id === c.originId)
+                    .map((o) => ({
+                      value: o.id,
+                      label: o.isActive ? o.name : `${o.name} (inactive)`,
+                    }))}
+                />
+              </div>
+              {(subcatsQ.data ?? []).filter((s) => s.isActive).length > 0 && (
+                <div className="field">
+                  <label className="text-[13px] font-medium text-text-main">Sub-category</label>
+                  <Select
+                    value={c.subcategoryId ?? ''}
+                    disabled={!canEdit}
+                    onChange={(v) => subcatM.mutate(v || null)}
+                    options={(subcatsQ.data ?? [])
+                      .filter((s) => s.isActive || s.id === c.subcategoryId)
+                      .map((s) => ({
+                        value: s.id,
+                        label: s.isActive ? s.name : `${s.name} (inactive)`,
+                      }))}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="pt-3 mt-3 border-t border-border space-y-2 text-xs">
