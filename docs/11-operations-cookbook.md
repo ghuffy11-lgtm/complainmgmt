@@ -405,6 +405,82 @@ SET key = …, name = … WHERE id = …`.
 
 ---
 
+## Sub-departments
+
+Sub-departments are optional per-department refinements (e.g. *IT → Network, Application*). When at least one active sub-department exists for a department, the create-complaint form requires a selection; departments with zero active sub-departments skip the field entirely.
+
+### Adding sub-departments
+
+**Admin → Sub-departments** — pick a department from the top picker, then **New sub-department**. Fields:
+
+| Field | Notes |
+|---|---|
+| Key | Lower-snake-case slug, e.g. `network`. Immutable after creation. |
+| Name | Display label. |
+
+### Deactivating a sub-department
+
+Deactivating hides the sub-department from the create form but keeps showing it on existing complaints that already reference it. The complaint's sub-department label stays correct even after deactivation.
+
+If you deactivate the **last** active sub-department for a department, new complaints for that department skip the sub-department step immediately (no restart needed — checked on every create).
+
+### Backfilling old complaints
+
+Complaints created before sub-departments were configured have `subcategory_id = NULL`. The detail page shows the sub-department dropdown empty; staff can fill it in as they access each complaint. There is no forced backfill — the field is only required at create time.
+
+To find complaints missing a sub-department in a specific department:
+
+```sql
+SELECT id, reference_no, status
+  FROM complaints
+ WHERE assigned_department_id = <dept_id>
+   AND subcategory_id IS NULL
+   AND status NOT IN ('closed', 'resolved')
+ ORDER BY id;
+```
+
+### Migrations
+
+- `0031_department_subcategories.sql` — creates `department_subcategories` table and adds `complaints.subcategory_id FK`.
+
+---
+
+## Origins of complaint
+
+Origins describe the channel a complaint arrived through. Three are seeded at install: *Social media*, *Verbal*, *Suggestion box*. Required on every new complaint.
+
+### Managing origins
+
+**Admin → Origins** — add, edit sort order, deactivate.
+
+Deactivating an origin hides it from the create-complaint picker and from the dashboard (unless its complaint count is > 0, in which case the card stays). The `(Unknown)` filter on the complaints list catches complaints whose origin was never set (pre-feature data).
+
+### Backfilling old complaints
+
+All complaints created before this feature was deployed have `origin_id = NULL`. They appear in the complaints list under the `(Unknown)` origin filter on the list page. The detail page shows the origin dropdown empty — staff can set it when they access each complaint.
+
+To bulk-assign a default origin to all unset complaints (e.g. "Verbal" has id=2):
+
+```sql
+-- Preview first
+SELECT COUNT(*) FROM complaints WHERE origin_id IS NULL;
+
+-- Bulk set (run inside a transaction)
+BEGIN;
+UPDATE complaints SET origin_id = 2 WHERE origin_id IS NULL;
+-- Verify
+SELECT COUNT(*) FROM complaints WHERE origin_id IS NULL;
+COMMIT;
+```
+
+This does NOT emit audit rows for the change. If you need an audit trail, patch each complaint via the API instead.
+
+### Migrations
+
+- `0032_complaint_origins.sql` — creates `complaint_origins` table (seeded with 3 defaults) and adds `complaints.origin_id FK`.
+
+---
+
 ## Troubleshooting
 
 Symptom → cause → fix, in operator language. Every entry corresponds
@@ -498,3 +574,21 @@ finish enrollment.
 The user doesn't have read permission on the per-field permissions
 that gate value display. Check
 `complaint.field:*:read` and per-field reads on their role(s).
+
+### "Sub-department dropdown doesn't appear on new complaint form"
+
+Two causes:
+1. The chosen department has no **active** sub-departments. Go to **Admin → Sub-departments**, pick the department, and confirm at least one row shows `active`.
+2. The `allSubcatsQ` fetch failed silently. Open browser DevTools → Network, look for a failed `GET /api/subcategories?active=true`.
+
+### "Origin dropdown is empty on an old complaint"
+
+Complaints created before the Origin feature was deployed have `origin_id = NULL`. The dropdown is intentionally empty — staff must set the origin when they next access the complaint. See "Backfilling old complaints" in the Origins section above.
+
+### "Dashboard Origin cards are missing"
+
+The dashboard endpoint `GET /api/dashboard/by-origin` returns rows only for origins that have ≥ 1 complaint. If no complaints exist yet (or all origins are `(Unknown)`), the Origin section shows no cards — that's correct. After the first complaint is filed with an origin set, the card appears.
+
+### "Filter by sub-department returns no results"
+
+Most likely the complaints in that department were created before sub-departments were configured, so their `subcategory_id` is NULL. Either backfill them (see cookbook section) or accept that the filter only matches complaints where the field was explicitly set.
