@@ -14,6 +14,8 @@ import { bootTestApp, resetUserData, seedAdminUser, TestApp } from './test-app';
 describe('Complaint flow (e2e)', () => {
   let ctx: TestApp;
   let adminToken: string;
+  let defaultDeptId: string;
+  let defaultOriginId: string;
 
   beforeAll(async () => {
     ctx = await bootTestApp();
@@ -30,6 +32,29 @@ describe('Complaint flow (e2e)', () => {
       .post('/api/auth/login')
       .send({ username: 'admin', password: 'admin-pass-1234' });
     adminToken = login.body.accessToken;
+
+    // Origin is required on every complaint create — pick the first
+    // seeded value from migration 0032.
+    const origins = await request(ctx.http)
+      .get('/api/origins')
+      .set('Authorization', `Bearer ${adminToken}`);
+    defaultOriginId = origins.body[0].id;
+
+    // Department is required at create time. Reuse an existing one if
+    // present, otherwise mint one. Each test runs with a fresh DB so the
+    // creation path is the common one.
+    const depts = await request(ctx.http)
+      .get('/api/departments')
+      .set('Authorization', `Bearer ${adminToken}`);
+    if (depts.body.length > 0) {
+      defaultDeptId = depts.body[0].id;
+    } else {
+      const created = await request(ctx.http)
+        .post('/api/departments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ key: 'general', name: 'General' });
+      defaultDeptId = created.body.id;
+    }
   });
 
   it('creates a complaint with reference number + audit row + first-writer ownership', async () => {
@@ -44,6 +69,8 @@ describe('Complaint flow (e2e)', () => {
           pro: '',
         },
         priority: 'high',
+        departmentId: defaultDeptId,
+        originId: defaultOriginId,
       });
     expect(create.status).toBe(201);
     expect(create.body.referenceNo).toMatch(/^CMP-\d{4}-\d{6}$/);
@@ -67,7 +94,11 @@ describe('Complaint flow (e2e)', () => {
     const create = await request(ctx.http)
       .post('/api/complaints')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ values: { patient_complaint: 'Owned by admin' } });
+      .send({
+        values: { patient_complaint: 'Owned by admin' },
+        departmentId: defaultDeptId,
+        originId: defaultOriginId,
+      });
     expect(create.status).toBe(201);
 
     // Seed an employee user (no override permission on the field).
@@ -95,7 +126,11 @@ describe('Complaint flow (e2e)', () => {
     const create = await request(ctx.http)
       .post('/api/complaints')
       .set('Authorization', `Bearer ${empLogin.body.accessToken}`)
-      .send({ values: { patient_complaint: 'Owned by bob' } });
+      .send({
+        values: { patient_complaint: 'Owned by bob' },
+        departmentId: defaultDeptId,
+        originId: defaultOriginId,
+      });
     expect(create.status).toBe(201);
 
     const override = await request(ctx.http)
@@ -123,7 +158,12 @@ describe('Complaint flow (e2e)', () => {
     const created = await request(ctx.http)
       .post('/api/complaints')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ values: { patient_complaint: 'first' }, priority: 'normal' });
+      .send({
+        values: { patient_complaint: 'first' },
+        priority: 'normal',
+        departmentId: defaultDeptId,
+        originId: defaultOriginId,
+      });
     expect(created.status).toBe(201);
     expect(created.body.status).toBe('open');
     expect(created.body.priority).toBe('normal');

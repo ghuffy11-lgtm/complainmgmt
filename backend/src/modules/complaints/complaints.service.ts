@@ -21,6 +21,8 @@ import { AuditService } from '../audit/audit.service';
 import { LockingService } from './locking.service';
 import { ReferenceNumberService } from './reference-number.service';
 import { AssignmentsService } from '../assignments/assignments.service';
+import { SubcategoriesService } from '../subcategories/subcategories.service';
+import { OriginsService } from '../origins/origins.service';
 import { hasPermission } from '../permissions/permission-resolver';
 import { CreateComplaintDto, UpdateComplaintDto } from './dto/complaint.dto';
 import { assertEditable, classifyStatusTransition } from './complaint-freeze';
@@ -55,7 +57,64 @@ export class ComplaintsService {
     private readonly locking: LockingService,
     private readonly refs: ReferenceNumberService,
     private readonly assignments: AssignmentsService,
+    private readonly subcategories: SubcategoriesService,
+    private readonly origins: OriginsService,
   ) {}
+
+  // ─── classification validation ─────────────────────────────────────────
+  // Returns `{ subcategoryId, originId }` after enforcing:
+  //   • origin must be provided + active
+  //   • when dept has ≥1 active subcat → subcategoryId required + must
+  //     belong to that dept and be active
+  //   • when dept has 0 active subcats → subcategoryId must not be supplied
+  private async validateClassification(input: {
+    departmentId: string;
+    subcategoryId?: string | null;
+    originId?: string;
+  }): Promise<{ subcategoryId: string | null; originId: string }> {
+    if (!input.originId) {
+      throw new BadRequestException({
+        code: 'VALIDATION_FAILED',
+        errors: { origin: ['REQUIRED'] },
+      });
+    }
+    const origin = await this.origins.findActive(input.originId);
+    if (!origin) {
+      throw new BadRequestException({
+        code: 'VALIDATION_FAILED',
+        errors: { origin: ['NOT_ACTIVE'] },
+      });
+    }
+
+    const deptHasSubcats = await this.subcategories.hasActive(input.departmentId);
+    if (deptHasSubcats) {
+      if (!input.subcategoryId) {
+        throw new BadRequestException({
+          code: 'VALIDATION_FAILED',
+          errors: { subcategory: ['REQUIRED'] },
+        });
+      }
+      const sub = await this.subcategories.findActiveForDepartment(
+        input.subcategoryId,
+        input.departmentId,
+      );
+      if (!sub) {
+        throw new BadRequestException({
+          code: 'VALIDATION_FAILED',
+          errors: { subcategory: ['DEPT_MISMATCH_OR_INACTIVE'] },
+        });
+      }
+      return { subcategoryId: sub.id, originId: origin.id };
+    }
+
+    if (input.subcategoryId) {
+      throw new BadRequestException({
+        code: 'VALIDATION_FAILED',
+        errors: { subcategory: ['NOT_ALLOWED'] },
+      });
+    }
+    return { subcategoryId: null, originId: origin.id };
+  }
 
   // ─── visibility scope ──────────────────────────────────────────────────
   // `complaint:read` (admin / manager) sees everything. Otherwise the
@@ -190,6 +249,12 @@ export class ComplaintsService {
       throw new BadRequestException({ code: 'VALIDATION_FAILED', errors: validation.errors });
     }
 
+    const classification = await this.validateClassification({
+      departmentId: dto.departmentId,
+      subcategoryId: dto.subcategoryId,
+      originId: dto.originId,
+    });
+
     return this.dataSource.transaction(async (em) => {
       const referenceNo = await this.refs.next(em);
       const complaint = await em.getRepository(ComplaintEntity).save(
@@ -199,6 +264,8 @@ export class ComplaintsService {
           priority: dto.priority ?? 'normal',
           createdBy: String(actor.id),
           complaintDate: dto.complaintDate ?? null,
+          subcategoryId: classification.subcategoryId,
+          originId: classification.originId,
         }),
       );
 
@@ -255,7 +322,9 @@ export class ComplaintsService {
   async update(id: string, dto: UpdateComplaintDto, actor: AuthUser) {
     const hasValuesPatch = !!dto.values && Object.keys(dto.values).length > 0;
     const hasDatePatch = Object.prototype.hasOwnProperty.call(dto, 'complaintDate');
-    if (!hasValuesPatch && !hasDatePatch) {
+    const hasSubcategoryPatch = Object.prototype.hasOwnProperty.call(dto, 'subcategoryId');
+    const hasOriginPatch = Object.prototype.hasOwnProperty.call(dto, 'originId');
+    if (!hasValuesPatch && !hasDatePatch && !hasSubcategoryPatch && !hasOriginPatch) {
       return this.detail(id, actor);
     }
 
@@ -306,6 +375,94 @@ export class ComplaintsService {
             newValue: newDate,
             actorId: String(actor.id),
           });
+        }
+      }
+
+      // ─── origin branch ─────────────────────────────────────────────────
+      if (hasOriginPatch) {
+        if (dto.originId == null) {
+          throw new BadRequestException({
+            code: 'VALIDATION_FAILED',
+            errors: { origin: ['REQUIRED'] },
+          });
+        }
+        const newOrigin = await this.origins.findActive(dto.originId);
+        if (!newOrigin) {
+          throw new BadRequestException({
+            code: 'VALIDATION_FAILED',
+            errors: { origin: ['NOT_ACTIVE'] },
+          });
+        }
+        const oldId = complaint.originId;
+        if (String(oldId) !== String(newOrigin.id)) {
+          complaint.originId = newOrigin.id;
+          await em.getRepository(ComplaintEntity).save(complaint);
+          await this.audit.recordChange({
+            em,
+            complaintId: id,
+            fieldKey: '__origin__',
+            action: 'update',
+            oldValue: oldId,
+            newValue: newOrigin.id,
+            actorId: String(actor.id),
+          });
+        }
+      }
+
+      // ─── sub-category branch ───────────────────────────────────────────
+      if (hasSubcategoryPatch) {
+        const deptId = complaint.assignedDepartmentId;
+        if (!deptId) {
+          throw new BadRequestException({
+            code: 'VALIDATION_FAILED',
+            errors: { subcategory: ['NO_DEPARTMENT'] },
+          });
+        }
+        const next = dto.subcategoryId;
+        if (next == null) {
+          const deptHasSubcats = await this.subcategories.hasActive(deptId);
+          if (deptHasSubcats) {
+            throw new BadRequestException({
+              code: 'VALIDATION_FAILED',
+              errors: { subcategory: ['REQUIRED'] },
+            });
+          }
+          if (complaint.subcategoryId != null) {
+            const old = complaint.subcategoryId;
+            complaint.subcategoryId = null;
+            await em.getRepository(ComplaintEntity).save(complaint);
+            await this.audit.recordChange({
+              em,
+              complaintId: id,
+              fieldKey: '__subcategory__',
+              action: 'update',
+              oldValue: old,
+              newValue: null,
+              actorId: String(actor.id),
+            });
+          }
+        } else {
+          const sub = await this.subcategories.findActiveForDepartment(next, deptId);
+          if (!sub) {
+            throw new BadRequestException({
+              code: 'VALIDATION_FAILED',
+              errors: { subcategory: ['DEPT_MISMATCH_OR_INACTIVE'] },
+            });
+          }
+          if (String(complaint.subcategoryId) !== String(sub.id)) {
+            const old = complaint.subcategoryId;
+            complaint.subcategoryId = sub.id;
+            await em.getRepository(ComplaintEntity).save(complaint);
+            await this.audit.recordChange({
+              em,
+              complaintId: id,
+              fieldKey: '__subcategory__',
+              action: 'update',
+              oldValue: old,
+              newValue: sub.id,
+              actorId: String(actor.id),
+            });
+          }
         }
       }
 
